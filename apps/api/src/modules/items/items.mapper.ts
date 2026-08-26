@@ -18,6 +18,7 @@ export function toItemDto(row: ItemRow): ItemDto {
   return {
     id: row.id,
     boardId: row.boardId,
+    boardName: row.board.name,
     title: row.title,
     description: row.description,
     status: row.status,

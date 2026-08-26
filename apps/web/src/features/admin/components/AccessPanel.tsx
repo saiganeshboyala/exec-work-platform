@@ -82,7 +82,7 @@ export function AccessPanel() {
             value={scope}
             onChange={(event) => setScope(event.target.value)}
           >
-            <option value="">Choose a workspace or board…</option>
+            <option value="">Choose a workspace or department…</option>
             {workspaces.data?.map((workspace) => (
               <option key={workspace.id} value={`workspace:${workspace.id}`}>
                 Workspace · {workspace.name}
@@ -90,7 +90,7 @@ export function AccessPanel() {
             ))}
             {boards.data?.map((board) => (
               <option key={board.id} value={`board:${board.id}`}>
-                Board · {board.name}
+                Department · {board.name}
               </option>
             ))}
           </select>
@@ -139,7 +139,7 @@ export function AccessPanel() {
             >
               <Avatar id={row.user.id} fullName={row.user.fullName} size={26} />
               <span style={{ flex: 1, fontSize: 'var(--text-md)' }}>{row.user.fullName}</span>
-              <span className="meta">{row.workspaceId ? 'workspace' : 'board'}</span>
+              <span className="meta">{row.workspaceId ? 'workspace' : 'department'}</span>
               <span style={{ fontSize: 'var(--text-base)' }}>{row.scopeName}</span>
               <span className="badge" style={{ background: 'var(--accent-wash)', color: 'var(--accent)' }}>
                 {row.role.toLowerCase()}

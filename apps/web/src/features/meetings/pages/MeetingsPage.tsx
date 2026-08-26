@@ -135,7 +135,7 @@ export function MeetingsPage() {
                 {selected.attendees.map((attendee) => attendee.fullName).join(', ')}
               </p>
               {selected.agendaItemIds.length > 0 ? (
-                <p className="meta">{selected.agendaItemIds.length} agenda items pulled from the boards</p>
+                <p className="meta">{selected.agendaItemIds.length} agenda items pulled from the departments</p>
               ) : null}
             </div>
             <button className="btn" type="button" onClick={() => setSelected(null)}>

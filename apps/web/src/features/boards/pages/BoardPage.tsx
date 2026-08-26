@@ -127,10 +127,10 @@ export function BoardPage() {
       <PageHeader
         breadcrumb={
           <Link to="/boards" className="meta" style={{ textDecoration: 'none' }}>
-            ← All boards
+            ← All departments
           </Link>
         }
-        title={board.data?.name ?? 'Board'}
+        title={board.data?.name ?? 'Department'}
         subtitle={
           <span className="row" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <span>{all.length === 0 ? 'No tasks yet' : `${done} of ${all.length} done`}</span>
@@ -168,7 +168,7 @@ export function BoardPage() {
               confirmingDelete ? (
                 <>
                   <span style={{ fontSize: 'var(--text-base)', color: 'var(--blocked)' }}>
-                    Delete this board and its {all.length} tasks?
+                    Delete this department and its {all.length} tasks?
                   </span>
                   <button
                     className="btn btn--sm"
@@ -184,7 +184,7 @@ export function BoardPage() {
                 </>
               ) : (
                 <button className="btn btn--ghost btn--sm" onClick={() => setConfirmingDelete(true)}>
-                  Delete board
+                  Delete department
                 </button>
               )
             ) : null}
@@ -226,7 +226,7 @@ export function BoardPage() {
           {visible.length === 0 ? (
             <div className="card" style={{ textAlign: 'center', padding: 'var(--space-7)' }}>
               <p style={{ fontSize: 'var(--text-lg)', fontWeight: 500 }}>
-                {all.length === 0 ? 'This board is empty' : 'Nothing matches those filters'}
+                {all.length === 0 ? 'This department is empty' : 'Nothing matches those filters'}
               </p>
               <p className="meta" style={{ marginTop: 6 }}>
                 {all.length === 0

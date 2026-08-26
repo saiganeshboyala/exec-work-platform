@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/database';
 
 export const itemInclude = {
+  board: { select: { name: true } },
   owner: { select: { id: true, fullName: true, avatarUrl: true } },
   assignees: {
     include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },

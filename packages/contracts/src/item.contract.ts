@@ -37,6 +37,8 @@ export type ListItemsQuery = z.infer<typeof listItemsQuerySchema>;
 export interface ItemDto {
   id: string;
   boardId: string;
+  /** Denormalised so cross-board views can show where a task lives. */
+  boardName: string;
   title: string;
   description: string | null;
   status: ItemStatus;

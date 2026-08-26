@@ -11,6 +11,7 @@ function item(overrides: Partial<ItemDto> = {}): ItemDto {
   return {
     id: Math.random().toString(36).slice(2),
     boardId: 'board-1',
+    boardName: 'Department 1',
     title: 'Task',
     description: null,
     status: 'NOT_STARTED',

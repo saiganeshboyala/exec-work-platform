@@ -185,12 +185,12 @@ export function ScheduleMeetingForm({
         {trackAsTask ? (
           <select
             className="field__input"
-            aria-label="Board for the tracking task"
+            aria-label="Department for the tracking task"
             value={taskBoardId}
             onChange={(event) => setTaskBoardId(event.target.value)}
             style={{ marginTop: 'var(--space-2)' }}
           >
-            <option value="">Choose a board…</option>
+            <option value="">Choose a department…</option>
             {boards.data?.map((board) => (
               <option key={board.id} value={board.id}>{board.name}</option>
             ))}

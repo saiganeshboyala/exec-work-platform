@@ -10,6 +10,9 @@ export const itemsApi = {
   listForBoard: (boardId: string) =>
     apiRequest<ItemDto[]>('/items', { query: { boardId, pageSize: 100 } }),
 
+  /** Every task the caller may see, across departments. Scoped server-side. */
+  listAll: () => apiRequest<ItemDto[]>('/items', { query: { pageSize: 100 } }),
+
   create: (body: CreateItemInput) => apiRequest<ItemDto>('/items', { method: 'POST', body }),
 
   update: (id: string, body: UpdateItemInput) =>

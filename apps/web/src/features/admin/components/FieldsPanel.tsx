@@ -17,7 +17,7 @@ const TYPE_LABEL: Record<FieldType, string> = {
   CHECKBOX: 'Checkbox',
 };
 
-/** Organisation-wide columns. Board-specific ones are created from a board. */
+/** Organisation-wide columns. Department-specific ones are created from a department. */
 export function FieldsPanel() {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState('');
@@ -116,7 +116,7 @@ export function FieldsPanel() {
               <span className="badge" style={{ background: 'var(--neutral-wash)', color: 'var(--neutral)' }}>
                 {TYPE_LABEL[field.type]}
               </span>
-              <span className="meta">{field.boardId ? 'one board' : 'all boards'}</span>
+              <span className="meta">{field.boardId ? 'one department' : 'all departments'}</span>
               <code className="meta">{field.key}</code>
               <button className="btn btn--ghost btn--sm" onClick={() => remove.mutate(field.id)}>
                 Delete

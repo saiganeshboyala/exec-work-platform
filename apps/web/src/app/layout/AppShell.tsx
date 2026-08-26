@@ -22,7 +22,7 @@ const NAV_GROUPS = [
   {
     label: 'Work',
     items: [
-      { to: '/boards', label: 'Boards', icon: '▦', end: false },
+      { to: '/boards', label: 'Departments', icon: '▦', end: false },
       { to: '/people', label: 'People', icon: '◍', end: false },
       // Administration is for ADMIN and OWNER; managers run the work, not the tenant.
       { to: '/admin', label: 'Admin', icon: '⚙', end: false, minRole: 'ADMIN' as Role },

@@ -28,6 +28,8 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
   const [ownerId, setOwnerId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [openAfter, setOpenAfter] = useState(false);
+  const [newDepartment, setNewDepartment] = useState('');
+  const [addingDepartment, setAddingDepartment] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -57,6 +59,18 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
       boards.data?.some((board) => board.id === current) ? current : (boards.data?.[0]?.id ?? ''),
     );
   }, [boards.data]);
+
+  // Creating a department here saves leaving the dialog just to make somewhere
+  // for the task to live.
+  const createDepartment = useMutation({
+    mutationFn: () => boardsApi.create({ workspaceId, name: newDepartment.trim(), isPortfolio: false }),
+    onSuccess: async (board) => {
+      setNewDepartment('');
+      setAddingDepartment(false);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.boards(workspaceId) });
+      setBoardId(board.id);
+    },
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -115,7 +129,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
 
         {(workspaces.data?.length ?? 0) === 0 ? (
           <p className="meta" style={{ marginTop: 'var(--space-4)' }}>
-            Create a workspace and a board first — a task has to live somewhere.
+            Create a workspace and a department first — a task has to live somewhere.
           </p>
         ) : (
           <div className="stack" style={{ marginTop: 'var(--space-4)' }}>
@@ -152,20 +166,71 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
               ) : null}
 
               <div className="field" style={{ flex: 1 }}>
-                <label className="field__label" htmlFor="qt-board">Board</label>
-                <select
-                  id="qt-board"
-                  className="field__input"
-                  value={boardId}
-                  onChange={(event) => setBoardId(event.target.value)}
-                >
-                  {(boards.data?.length ?? 0) === 0 ? (
-                    <option value="">No boards in this workspace</option>
-                  ) : null}
-                  {boards.data?.map((board) => (
-                    <option key={board.id} value={board.id}>{board.name}</option>
-                  ))}
-                </select>
+                <label className="field__label" htmlFor="qt-board">Department</label>
+
+                {addingDepartment ? (
+                  <span className="row" style={{ gap: 'var(--space-2)' }}>
+                    <input
+                      className="field__input"
+                      autoFocus
+                      placeholder="New department name"
+                      aria-label="New department name"
+                      value={newDepartment}
+                      onChange={(event) => setNewDepartment(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && newDepartment.trim() !== '') {
+                          event.preventDefault();
+                          createDepartment.mutate();
+                        }
+                        if (event.key === 'Escape') setAddingDepartment(false);
+                      }}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      disabled={newDepartment.trim() === '' || createDepartment.isPending}
+                      onClick={() => createDepartment.mutate()}
+                    >
+                      {createDepartment.isPending ? 'Adding…' : 'Add'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => setAddingDepartment(false)}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <span className="row" style={{ gap: 'var(--space-2)' }}>
+                    <select
+                      id="qt-board"
+                      className="field__input"
+                      value={boardId}
+                      onChange={(event) => setBoardId(event.target.value)}
+                      style={{ flex: 1, minWidth: 0 }}
+                    >
+                      {(boards.data?.length ?? 0) === 0 ? (
+                        <option value="">No departments yet</option>
+                      ) : null}
+                      {boards.data?.map((board) => (
+                        <option key={board.id} value={board.id}>{board.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn--icon"
+                      title="New department"
+                      aria-label="New department"
+                      onClick={() => setAddingDepartment(true)}
+                    >
+                      +
+                    </button>
+                  </span>
+                )}
+
+                {createDepartment.error ? <ErrorNotice error={createDepartment.error} /> : null}
               </div>
             </div>
 

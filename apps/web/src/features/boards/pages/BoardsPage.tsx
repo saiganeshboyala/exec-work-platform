@@ -66,8 +66,8 @@ export function BoardsPage() {
   return (
     <div className="stack" style={{ gap: 'var(--space-5)' }}>
       <PageHeader
-        title="Boards"
-        subtitle="Work lives on boards. Each board belongs to one workspace."
+        title="Departments"
+        subtitle="Work lives in departments. Each department belongs to one workspace."
         actions={
           hasWorkspace ? (
             <span className="row" style={{ gap: 'var(--space-2)' }}>
@@ -105,7 +105,7 @@ export function BoardsPage() {
         <div className="card">
           <EmptyState
             title="Create your first workspace"
-            body="A workspace groups the boards one part of the business owns."
+            body="A workspace groups the departments one part of the business owns."
           />
           {canEdit ? (
             <div style={{ marginTop: 'var(--space-4)' }}>
@@ -174,8 +174,8 @@ export function BoardsPage() {
 
             {canEdit ? (
               <InlineCreate
-                label="New board"
-                placeholder="Board name"
+                label="New department"
+                placeholder="Department name"
                 variant="card"
                 pending={createBoard.isPending}
                 onSubmit={(name) => createBoard.mutate(name)}
