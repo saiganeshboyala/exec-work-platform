@@ -135,7 +135,7 @@ export function ItemGroupTable({
                 style={{ justifySelf: 'center' }}
               />
               <span>Task</span>
-              <span>People</span>
+              <span>Owner</span>
               <span style={{ textAlign: 'center' }}>Status</span>
               <span style={{ textAlign: 'center' }}>Priority</span>
               <span>Due</span>

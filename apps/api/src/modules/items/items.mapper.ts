@@ -9,6 +9,12 @@ import type { ItemRow } from './items.repository';
  * the service means the wire format can change without touching business logic.
  */
 export function toItemDto(row: ItemRow): ItemDto {
+  // The soonest meeting still ahead of us; cancelled ones do not count.
+  const upcoming = row.agendaFor
+    .map((link) => link.meeting)
+    .filter((meeting) => meeting.cancelledAt === null && meeting.startsAt >= new Date())
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+
   return {
     id: row.id,
     boardId: row.boardId,
@@ -28,6 +34,9 @@ export function toItemDto(row: ItemRow): ItemDto {
     startDate: row.startDate?.toISOString() ?? null,
     dueDate: row.dueDate?.toISOString() ?? null,
     blockedReason: row.blockedReason,
+    nextMeeting: upcoming
+      ? { id: upcoming.id, title: upcoming.title, startsAt: upcoming.startsAt.toISOString() }
+      : null,
     parentId: row.parentId,
     subitemCount: row._count.subitems,
     createdAt: row.createdAt.toISOString(),

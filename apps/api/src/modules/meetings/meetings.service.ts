@@ -7,6 +7,7 @@ import { prisma } from '@/database';
 import { calendarProvider } from '@/integrations/calendar';
 import { meetingFilter } from '@/modules/access';
 import { activityService } from '@/modules/activity';
+import { boardsService } from '@/modules/boards';
 import { notificationsService } from '@/modules/notifications';
 import { workspacesService } from '@/modules/workspaces';
 
@@ -140,7 +141,34 @@ export const meetingsService = {
       take: 50,
     });
 
-    const agendaItemIds = [...new Set([...input.itemIds, ...attention.map((i) => i.id)])];
+    // A meeting scheduled from scratch leaves nothing on a board to track it,
+    // so one task is created to carry the preparation and the outcome.
+    let createdTaskId: string | null = null;
+
+    if (input.createTaskOnBoardId) {
+      await boardsService.getOrFail(auth, input.createTaskOnBoardId);
+
+      const task = await prisma.item.create({
+        data: {
+          boardId: input.createTaskOnBoardId,
+          title: input.title.slice(0, 300),
+          description: `Created automatically for the meeting on ${input.startsAt.toLocaleString('en-GB')}.`,
+          status: 'NOT_STARTED',
+          priority: 'MEDIUM',
+          ownerId: auth.userId,
+          dueDate: input.startsAt,
+        },
+      });
+      createdTaskId = task.id;
+    }
+
+    const agendaItemIds = [
+      ...new Set([
+        ...(createdTaskId ? [createdTaskId] : []),
+        ...input.itemIds,
+        ...attention.map((i) => i.id),
+      ]),
+    ];
 
     const meeting = await prisma.meeting.create({
       data: {

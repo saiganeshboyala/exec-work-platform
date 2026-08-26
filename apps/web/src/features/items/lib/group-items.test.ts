@@ -21,6 +21,7 @@ function item(overrides: Partial<ItemDto> = {}): ItemDto {
     startDate: null,
     dueDate: null,
     blockedReason: null,
+    nextMeeting: null,
     parentId: null,
     subitemCount: 0,
     createdAt: iso(-10),

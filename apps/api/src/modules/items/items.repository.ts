@@ -8,6 +8,10 @@ export const itemInclude = {
     include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
     orderBy: { assignedAt: 'asc' },
   },
+  // Agenda links carry the meeting a task is scheduled to be discussed at.
+  agendaFor: {
+    include: { meeting: { select: { id: true, title: true, startsAt: true, cancelledAt: true } } },
+  },
   _count: { select: { subitems: true } },
 } satisfies Prisma.ItemInclude;
 

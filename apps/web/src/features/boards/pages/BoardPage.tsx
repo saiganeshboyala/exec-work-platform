@@ -1,7 +1,7 @@
 import { ROLE_RANK, type ItemDto, type ItemStatus, type SavedViewDto } from '@ewp/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { useAuth } from '@/features/auth';
 import {
@@ -36,12 +36,15 @@ export function BoardPage() {
   const { boardId = '' } = useParams();
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<BoardFilters>(DEFAULT_FILTERS);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [layout, setLayout] = useState<Layout>('table');
   const [openItemId, setOpenItemId] = useState<string | null>(params.get('item'));
   const [meetingItemId, setMeetingItemId] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const board = useQuery({
     queryKey: queryKeys.board(boardId),
@@ -69,6 +72,16 @@ export function BoardPage() {
   }, [views.data, appliedDefault]);
 
   const canEdit = user ? ROLE_RANK[user.role] >= ROLE_RANK.MEMBER : false;
+  // Deleting a board takes its tasks with it, so it needs a higher bar than editing.
+  const canDeleteBoard = user ? ROLE_RANK[user.role] >= ROLE_RANK.MANAGER : false;
+
+  const deleteBoard = useMutation({
+    mutationFn: () => boardsApi.remove(boardId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['boards'] });
+      navigate('/boards', { replace: true });
+    },
+  });
 
   const all = useMemo(() => query.data ?? [], [query.data]);
   const visible = useMemo(() => applyFilters(all, filters, user?.id), [all, filters, user?.id]);
@@ -150,6 +163,31 @@ export function BoardPage() {
             >
               Export CSV
             </a>
+
+            {canDeleteBoard ? (
+              confirmingDelete ? (
+                <>
+                  <span style={{ fontSize: 'var(--text-base)', color: 'var(--blocked)' }}>
+                    Delete this board and its {all.length} tasks?
+                  </span>
+                  <button
+                    className="btn btn--sm"
+                    disabled={deleteBoard.isPending}
+                    style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
+                    onClick={() => deleteBoard.mutate()}
+                  >
+                    {deleteBoard.isPending ? 'Deleting…' : 'Yes, delete'}
+                  </button>
+                  <button className="btn btn--ghost btn--sm" onClick={() => setConfirmingDelete(false)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn--ghost btn--sm" onClick={() => setConfirmingDelete(true)}>
+                  Delete board
+                </button>
+              )
+            ) : null}
           </>
         }
       />

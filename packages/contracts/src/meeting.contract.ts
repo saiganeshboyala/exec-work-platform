@@ -15,6 +15,12 @@ export const scheduleMeetingSchema = z
      * Calendar is connected, because Google issues its own Meet link.
      */
     joinUrl: z.string().url().max(1000).optional(),
+    /**
+     * When set, a task for this meeting is created on that board and put on the
+     * agenda. Omitted when the meeting was raised from an existing task, which
+     * already has one.
+     */
+    createTaskOnBoardId: z.string().uuid().optional(),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: 'The end time must be after the start time',
