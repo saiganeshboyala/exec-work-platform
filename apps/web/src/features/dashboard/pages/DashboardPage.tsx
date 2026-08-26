@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { QuickCreateTask } from '@/features/items';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -13,6 +15,7 @@ import { useExecutiveDashboard } from '../hooks/useExecutiveDashboard';
 
 export function DashboardPage() {
   const { data, isPending, error } = useExecutiveDashboard();
+  const [creating, setCreating] = useState(false);
 
   if (isPending) {
     return (
@@ -31,11 +34,18 @@ export function DashboardPage() {
         title="Todo"
         subtitle={`Updated ${formatDateTime(data.generatedAt)}`}
         actions={
-          <Link className="btn" to="/meetings">
-            Schedule a review
-          </Link>
+          <>
+            <button className="btn btn--primary" onClick={() => setCreating(true)}>
+              + Create task
+            </button>
+            <Link className="btn" to="/meetings">
+              Meetings
+            </Link>
+          </>
         }
       />
+
+      {creating ? <QuickCreateTask onClose={() => setCreating(false)} /> : null}
 
       <section
         aria-label="Key figures"

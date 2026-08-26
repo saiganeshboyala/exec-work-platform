@@ -4,6 +4,7 @@ export { BoardToolbar } from './components/BoardToolbar';
 export { BulkActionBar } from './components/BulkActionBar';
 export { ItemDrawer } from './components/ItemDrawer';
 export { ItemGroupTable } from './components/ItemGroupTable';
+export { QuickCreateTask } from './components/QuickCreateTask';
 export { TaskMeetingDialog } from './components/TaskMeetingDialog';
 export { TimelineView } from './components/TimelineView';
 export { useBoardItems } from './hooks/useBoardItems';
