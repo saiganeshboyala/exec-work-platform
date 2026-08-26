@@ -1,0 +1,271 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>CIS Technologies — EC2 Deployment Guide</title>
+<link rel="stylesheet" href="style.css"></head><body>
+
+<div class="cover">
+  <h1>EC2 Deployment Guide</h1>
+  <p class="sub">CIS Technologies — deploying directly onto a single EC2 instance</p>
+  <p class="meta">Docker Compose · Caddy with automatic TLS · Postgres · Redis · systemd · nightly backups</p>
+</div>
+
+<div class="box ok">
+  <b>The files are already in your repository.</b>
+  <p>Everything this guide references lives in <code>deploy/ec2/</code> and has been validated:</p>
+  <table style="margin-top:6px">
+    <tr><th style="width:34%">File</th><th>What it does</th></tr>
+    <tr><td><code>docker-compose.prod.yml</code></td><td>The whole stack. Only Caddy publishes ports; everything else is on an isolated network.</td></tr>
+    <tr><td><code>Caddyfile</code></td><td>TLS certificate issued and renewed automatically; routes <code>/api/*</code> to the API and the rest to the SPA.</td></tr>
+    <tr><td><code>.env.example</code></td><td>Every variable you need, annotated. Copy to <code>.env</code> on the server.</td></tr>
+    <tr><td><code>backup.sh</code></td><td>Nightly <code>pg_dump</code>, gzip, optional S3 upload, 14-day rotation.</td></tr>
+    <tr><td><code>cis.service</code></td><td>systemd unit so the stack starts on boot.</td></tr>
+  </table>
+</div>
+
+<h2>1 · Is EC2 the right choice here?</h2>
+<table>
+  <tr><th style="width:24%"></th><th>Single EC2</th><th>ECS Fargate</th></tr>
+  <tr><td><b>Setup effort</b></td><td>An afternoon</td><td>A day or two</td></tr>
+  <tr><td><b>Cost (small)</b></td><td><b>~$20–35/month</b></td><td>~$110/month</td></tr>
+  <tr><td><b>Deploys</b></td><td>SSH in, <code>git pull</code>, rebuild — brief downtime</td><td>Rolling, zero downtime</td></tr>
+  <tr><td><b>If the box dies</b></td><td>The site is down until you rebuild it</td><td>Tasks reschedule automatically</td></tr>
+  <tr><td><b>Patching</b></td><td>Yours</td><td>AWS handles the host</td></tr>
+  <tr><td><b>Backups</b></td><td>Yours — <code>backup.sh</code> plus a tested restore</td><td>RDS automated, point-in-time</td></tr>
+</table>
+<div class="box"><b>EC2 is a sound choice for a pilot, an internal tool, or a first paying customer.</b>
+Be clear-eyed about what you are accepting: one machine, one disk, and downtime during every deploy
+and every reboot. Move when you have users who would notice.</div>
+
+<h3>Two shapes</h3>
+<table>
+  <tr><th style="width:26%">Shape</th><th>When</th></tr>
+  <tr><td><b>A. All-in-one</b><br><span class="tag">this guide</span></td>
+      <td>Postgres and Redis run as containers on the same instance. Cheapest and simplest. You own the backups completely.</td></tr>
+  <tr><td><b>B. EC2 + RDS</b><br><span class="tag green">for real production</span></td>
+      <td>Keep the app containers on EC2; move the database to RDS. You get managed backups and point-in-time recovery for roughly $15–60/month more. Only change: delete the <code>postgres</code> service from the compose file and point <code>DATABASE_URL</code> at RDS.</td></tr>
+</table>
+
+<h2>2 · Before you start</h2>
+<ul class="chk">
+  <li><b>Clear blocker 1 from the readiness checklist first.</b> Run <code>npx prisma migrate dev --name init</code> locally and commit <code>apps/api/prisma/migrations/</code>. The compose file runs <code>migrate deploy</code>, which does nothing if that folder is missing — you would get a running app with an empty database.</li>
+  <li>A domain you control, ready to point at an IP.</li>
+  <li>An AWS account, and an SSH key pair created in your chosen region.</li>
+  <li>Blocker 2 is already handled: Caddy does the <code>/api/*</code> routing.</li>
+</ul>
+<div class="box stop"><b>Do not skip the migration step.</b>
+It is the single most common reason a first deployment comes up, accepts a login, and shows nothing
+at all.</div>
+
+<h2>3 · Launch the instance</h2>
+<table>
+  <tr><th style="width:24%">Setting</th><th>Value</th></tr>
+  <tr><td>AMI</td><td>Ubuntu Server 24.04 LTS (or Amazon Linux 2023)</td></tr>
+  <tr><td>Type</td><td><b><code>t3.small</code></b> minimum · <code>t3.medium</code> if you build images on the box</td></tr>
+  <tr><td>Storage</td><td>30 GB gp3, encrypted, delete-on-termination <b>off</b></td></tr>
+  <tr><td>Key pair</td><td>Your SSH key</td></tr>
+  <tr><td>IAM role</td><td>Only if using S3 backups or SSM — attach one with <code>s3:PutObject</code> on your bucket</td></tr>
+</table>
+<div class="box warn"><b>A <code>t3.micro</code> will fail.</b> Building the web image runs Vite and
+TypeScript, which needs more than 1 GB; the build is killed by the OOM reaper part-way through with a
+confusing error. Either use <code>t3.small</code> with swap (§5), or build images elsewhere and pull
+them.</div>
+
+<h3>Security group</h3>
+<table>
+  <tr><th>Port</th><th>Source</th><th>Why</th></tr>
+  <tr><td>22 (SSH)</td><td><b>Your IP only</b></td><td>Never <code>0.0.0.0/0</code></td></tr>
+  <tr><td>80</td><td>0.0.0.0/0</td><td>Certificate challenge and the HTTPS redirect</td></tr>
+  <tr><td>443</td><td>0.0.0.0/0</td><td>The application</td></tr>
+</table>
+<p>Nothing else. Postgres and Redis are on an internal Docker network and are not reachable from
+outside the instance — the compose file never publishes their ports.</p>
+
+<h3>Elastic IP and DNS</h3>
+<pre><code>aws ec2 allocate-address --domain vpc
+aws ec2 associate-address --instance-id i-xxxx --allocation-id eipalloc-xxxx</code></pre>
+<p>Then create an <b>A record</b> for <code>cis.example.com</code> pointing at that IP and wait for
+it to resolve. Caddy cannot obtain a certificate until DNS is live.</p>
+<pre><code>dig +short cis.example.com     # must return your Elastic IP before you continue</code></pre>
+<div class="box"><b>Allocate an Elastic IP before you point DNS at anything.</b> A stopped instance
+loses its public IP, and you would have to update DNS on every restart.</div>
+
+<h2 class="page">4 · Prepare the server</h2>
+<pre><code>ssh -i ~/.ssh/your-key.pem ubuntu@cis.example.com
+
+sudo apt update &amp;&amp; sudo apt upgrade -y
+sudo apt install -y ca-certificates curl git ufw fail2ban unattended-upgrades
+
+# Docker, official repository
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(. /etc/os-release &amp;&amp; echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo usermod -aG docker $USER &amp;&amp; newgrp docker
+docker compose version</code></pre>
+
+<h3>Hardening — do this now, not later</h3>
+<pre><code># Firewall (belt and braces alongside the security group)
+sudo ufw default deny incoming &amp;&amp; sudo ufw default allow outgoing
+sudo ufw allow 22 &amp;&amp; sudo ufw allow 80 &amp;&amp; sudo ufw allow 443
+sudo ufw --force enable
+
+# Disable password and root SSH login
+sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/'               /etc/ssh/sshd_config
+sudo systemctl restart ssh
+
+sudo systemctl enable --now fail2ban
+sudo dpkg-reconfigure -plow unattended-upgrades   # automatic security updates</code></pre>
+
+<h3>Swap — required on t3.small</h3>
+<pre><code>sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab</code></pre>
+<p class="meta">Without swap, a 2 GB instance will be killed mid-build. This is the difference
+between "the build is slow" and "the build dies at 80% with no useful message".</p>
+
+<h2>5 · Deploy</h2>
+<pre><code>sudo mkdir -p /opt/cis &amp;&amp; sudo chown $USER:$USER /opt/cis
+git clone https://github.com/YOUR_ORG/YOUR_REPO.git /opt/cis
+cd /opt/cis/deploy/ec2
+
+cp .env.example .env
+chmod 600 .env
+nano .env            # fill in every CHANGE_ME</code></pre>
+
+<h3>Generate the secrets</h3>
+<pre><code>openssl rand -base64 48    # JWT_ACCESS_SECRET
+openssl rand -base64 48    # JWT_REFRESH_SECRET  (must differ)
+openssl rand -base64 32    # POSTGRES_PASSWORD
+
+# web push keys
+docker run --rm node:20-alpine sh -c \
+  "npm i -s web-push &amp;&amp; node -e \"console.log(require('web-push').generateVAPIDKeys())\""</code></pre>
+<div class="box warn"><b><code>POSTGRES_PASSWORD</code> appears twice</b> — once on its own and once
+inside <code>DATABASE_URL</code>. They must match, and if the password contains
+<code>@ : / ?</code> or <code>#</code> it must be percent-encoded inside the URL. Easiest is to
+generate one without them.</div>
+
+<h3>Point the Caddyfile at your domain</h3>
+<pre><code>sed -i 's/cis.example.com/YOUR_DOMAIN/' Caddyfile</code></pre>
+
+<h3>Start it</h3>
+<pre><code>docker compose -f docker-compose.prod.yml up -d --build</code></pre>
+<p>The first run takes several minutes: it builds both images, starts Postgres, runs the migration to
+completion, then starts the API and web. Caddy requests a certificate as soon as the domain resolves.</p>
+<pre><code>docker compose -f docker-compose.prod.yml ps          # all healthy?
+docker compose -f docker-compose.prod.yml logs -f api # watch it boot
+curl -fsS https://YOUR_DOMAIN/api/v1/health/ready</code></pre>
+<p>Expect <code>{"success":true,"data":{"status":"ready","checks":{"database":true,"cache":true}}}</code>.</p>
+
+<h2>6 · Create the first account</h2>
+<p><b>Do not run the seed.</b> It creates a demo organisation and four users sharing one password.
+Register once through the API — this creates the organisation and makes you its OWNER:</p>
+<pre><code>curl -X POST https://YOUR_DOMAIN/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"organizationName":"CIS Technologies","fullName":"Your Name",
+       "email":"you@cis.example.com","password":"a-long-strong-password"}'</code></pre>
+<p>Then sign in, and either invite people from the People page or let them use <b>Request access</b>
+on the sign-in page and approve them under <b>Admin → Approvals</b>.</p>
+
+<h2>7 · Start on boot</h2>
+<pre><code>sudo cp /opt/cis/deploy/ec2/cis.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cis
+sudo systemctl status cis</code></pre>
+<p>Without this, a reboot leaves the site down until you SSH in. Reboot once now to prove it works —
+better to find out today than during an incident.</p>
+
+<h2 class="page">8 · Backups</h2>
+<p>On a single instance the database lives on one EBS volume. Backups are entirely your
+responsibility, and an untested backup is a hope, not a backup.</p>
+<pre><code># optional off-box copies
+export S3_BUCKET=s3://your-bucket/cis      # needs an instance role with s3:PutObject
+
+sudo crontab -e
+15 2 * * * S3_BUCKET=s3://your-bucket/cis /opt/cis/deploy/ec2/backup.sh >> /var/log/cis-backup.log 2>&1</code></pre>
+<p>Also enable <b>EBS snapshots</b> via Data Lifecycle Manager — a daily snapshot with 7-day
+retention protects you against losing the whole volume, which a SQL dump does not.</p>
+<h3>Restore drill — do this once, before you need it</h3>
+<pre><code>gunzip -c /var/backups/cis/cis-YYYYMMDD-HHMMSS.sql.gz \
+  | docker compose -f docker-compose.prod.yml exec -T postgres \
+      psql -U cis_app -d cis</code></pre>
+<p class="meta">Time it. However long that takes is your real recovery time, whatever your plan says.</p>
+
+<h2>9 · Updating</h2>
+<pre><code>cd /opt/cis
+git pull
+docker compose -f deploy/ec2/docker-compose.prod.yml up -d --build
+docker image prune -f</code></pre>
+<p>Migrations run automatically before the API starts, because the API depends on the
+<code>migrate</code> service completing successfully.</p>
+<div class="box warn"><b>This causes roughly 30–90 seconds of downtime</b> while images rebuild and
+containers restart. That is the honest trade-off of a single box. Take a backup first if the release
+includes a migration:
+<pre><code>/opt/cis/deploy/ec2/backup.sh &amp;&amp; git pull &amp;&amp; docker compose ... up -d --build</code></pre></div>
+<h3>Rolling back</h3>
+<pre><code>git log --oneline -5
+git checkout &lt;previous-sha&gt;
+docker compose -f deploy/ec2/docker-compose.prod.yml up -d --build</code></pre>
+<p>Rolling back code does not reverse a migration. Keep migrations backwards compatible: add columns
+nullable, backfill, make them required in a later release.</p>
+
+<h2>10 · Monitoring</h2>
+<pre><code>sudo apt install -y amazon-cloudwatch-agent      # or use the SSM package</code></pre>
+<p>The three that actually matter on one box:</p>
+<table>
+  <tr><th style="width:34%">Alarm</th><th>Threshold</th><th>Why</th></tr>
+  <tr><td>Disk used</td><td>&gt; 80%</td><td>A full disk stops Postgres writing and is the most common single-box outage</td></tr>
+  <tr><td>StatusCheckFailed</td><td>≥ 1</td><td>The instance itself is unhealthy</td></tr>
+  <tr><td>Memory used</td><td>&gt; 90%</td><td>Precedes the OOM killer taking a container</td></tr>
+</table>
+<p>Add an external uptime check against <code>https://YOUR_DOMAIN/api/v1/health/ready</code>. A
+monitor running on the same box tells you nothing when the box is the problem.</p>
+<pre><code>docker compose -f docker-compose.prod.yml logs -f --tail=100 api
+docker stats --no-stream
+df -h &amp;&amp; free -h</code></pre>
+
+<h2>11 · Troubleshooting</h2>
+<table>
+  <tr><th style="width:36%">Symptom</th><th>Cause and fix</th></tr>
+  <tr><td>No certificate; Caddy logs an ACME failure</td><td>DNS does not resolve to this instance yet, or port 80 is closed. Check <code>dig +short YOUR_DOMAIN</code> and the security group.</td></tr>
+  <tr><td>Site loads, every API call 404s</td><td>The domain in <code>Caddyfile</code> was never changed, so the site block does not match your host.</td></tr>
+  <tr><td>API container restarts in a loop</td><td>Env validation failed at boot. <code>logs api</code> names the missing variable on the first line.</td></tr>
+  <tr><td>Login works, all lists are empty</td><td>Migrations never ran — the <code>migrations/</code> folder is missing from the repo. §2.</td></tr>
+  <tr><td><code>migrate</code> exits non-zero</td><td>Wrong <code>DATABASE_URL</code>, or the password differs between <code>POSTGRES_PASSWORD</code> and the URL.</td></tr>
+  <tr><td>Build killed around 80%</td><td>Out of memory. Add swap (§4) or use a larger instance.</td></tr>
+  <tr><td>Invitations never arrive</td><td><code>EMAIL_DRIVER</code> still <code>console</code>, or SES is still in sandbox mode.</td></tr>
+  <tr><td>Everything died after a reboot</td><td>The systemd unit was never enabled. §7.</td></tr>
+  <tr><td>Disk full</td><td><code>docker system prune -a</code>, then check <code>/var/lib/docker</code> and old backups.</td></tr>
+</table>
+
+<h2>12 · Cost</h2>
+<table>
+  <tr><th>Item</th><th style="width:22%">Monthly</th></tr>
+  <tr><td>t3.small on-demand</td><td>~$15</td></tr>
+  <tr><td>30 GB gp3</td><td>~$2.50</td></tr>
+  <tr><td>Elastic IP (while attached)</td><td>free</td></tr>
+  <tr><td>Snapshots and S3 backups</td><td>~$2</td></tr>
+  <tr><td>Data transfer out</td><td>~$1–5</td></tr>
+  <tr><td><b>Total, all-in-one</b></td><td><b>~$21–25</b></td></tr>
+  <tr><td>Add RDS db.t4g.micro (shape B)</td><td>+~$15</td></tr>
+</table>
+<p class="meta">ap-south-1 on-demand, mid-2026 list prices. A one-year Savings Plan takes roughly 30%
+off the instance. Verify with the AWS pricing calculator before committing.</p>
+
+<h2>13 · When to move off a single instance</h2>
+<ul>
+  <li>Downtime during deploys stops being acceptable to your users.</li>
+  <li>You need more than one instance for availability, not capacity.</li>
+  <li>Losing the box for an hour would cost more than the difference in AWS bill.</li>
+  <li>The database has grown past what you are willing to back up by hand.</li>
+</ul>
+<p>The migration path is gentle: move the database to RDS first (shape B — one line in the compose
+file and one URL), then move the containers to ECS using the AWS guide. The images and environment
+variables do not change.</p>
+
+</body></html>
