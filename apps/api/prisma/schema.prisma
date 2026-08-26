@@ -1,0 +1,596 @@
+// Prisma schema - the single source of truth for the relational model.
+// Conventions:
+//   * table names are snake_case plural via @@map
+//   * every tenant-scoped table carries organizationId and is indexed on it
+//   * nothing is hard-deleted except transient rows; use deletedAt
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  MEMBER
+  GUEST
+  VIEWER
+}
+
+enum ItemStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Whether a membership may actually be used. Self-signups land on PENDING and
+/// stay unusable until an administrator approves them.
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum ActivityVerb {
+  CREATED
+  UPDATED
+  DELETED
+  STATUS_CHANGED
+  ASSIGNED
+  COMMENTED
+  INVITED
+  JOINED
+  SCHEDULED
+}
+
+/// The tenant boundary. Every query in the application filters by this.
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  slug      String   @unique @db.VarChar(140)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships         Membership[]
+  workspaces          Workspace[]
+  invitations         Invitation[]
+  activities          Activity[]
+  pushSubscriptions   PushSubscription[]
+  notifications       Notification[]
+  calendarConnections CalendarConnection[]
+  savedViews          SavedView[]
+  itemDependencies    ItemDependency[]
+  comments            Comment[]
+  fieldDefinitions    FieldDefinition[]
+  automations         Automation[]
+  scopedAccess        ScopedAccess[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(254)
+  passwordHash String    @db.VarChar(255)
+  fullName     String    @db.VarChar(120)
+  jobTitle     String?   @db.VarChar(120)
+  avatarUrl    String?   @db.VarChar(500)
+  lastActiveAt DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships       Membership[]
+  ownedItems        Item[]              @relation("ItemOwner")
+  refreshTokens     RefreshToken[]
+  activities        Activity[]
+  attendances       MeetingAttendee[]
+  decisions         Decision[]
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
+  calendarConnection CalendarConnection?
+  savedViews        SavedView[]
+  comments          Comment[]
+  scopedAccess      ScopedAccess[]
+  assignments       ItemAssignee[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+/// Join table between a user and a tenant. Role lives here, never on User.
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  organizationId String           @db.Uuid
+  role           Role             @default(MEMBER)
+  /// Defaults to ACTIVE so invited and seeded people are unaffected; the
+  /// self-signup path sets PENDING explicitly.
+  status         MembershipStatus @default(ACTIVE)
+  decidedAt      DateTime?
+  decidedById    String?          @db.Uuid
+  joinedAt       DateTime         @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, status])
+  @@map("memberships")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique @db.VarChar(255)
+  userAgent String?   @db.VarChar(300)
+  ipAddress String?   @db.VarChar(64)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  email          String           @db.VarChar(254)
+  role           Role             @default(MEMBER)
+  tokenHash      String           @unique @db.VarChar(255)
+  status         InvitationStatus @default(PENDING)
+  invitedById    String           @db.Uuid
+  message        String?          @db.VarChar(500)
+  /// Set by the email worker once the provider accepts the message.
+  emailDeliveredAt DateTime?
+  acceptedAt     DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([email])
+  @@map("invitations")
+}
+
+model Workspace {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String    @db.VarChar(120)
+  description    String?   @db.VarChar(1000)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  boards       Board[]
+  meetings     Meeting[]
+  scopedAccess ScopedAccess[]
+
+  @@index([organizationId, deletedAt])
+  @@map("workspaces")
+}
+
+model Board {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @db.Uuid
+  name        String    @db.VarChar(120)
+  description String?   @db.VarChar(1000)
+  /// Portfolio boards roll their children up onto the executive dashboard.
+  isPortfolio Boolean   @default(false)
+  position    Int       @default(0)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     Item[]
+  savedViews       SavedView[]
+  fieldDefinitions FieldDefinition[]
+  automations      Automation[]
+  scopedAccess     ScopedAccess[]
+
+  @@index([workspaceId, deletedAt])
+  @@map("boards")
+}
+
+model Item {
+  id             String     @id @default(uuid()) @db.Uuid
+  boardId        String     @db.Uuid
+  parentId       String?    @db.Uuid
+  title          String     @db.VarChar(300)
+  description    String?
+  status         ItemStatus @default(NOT_STARTED)
+  priority       Priority   @default(MEDIUM)
+  ownerId        String?    @db.Uuid
+  startDate      DateTime?
+  dueDate        DateTime?
+  blockedReason  String?    @db.VarChar(500)
+  completedAt    DateTime?
+  position       Int        @default(0)
+  deletedAt      DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  board     Board             @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  parent    Item?             @relation("ItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subitems  Item[]            @relation("ItemHierarchy")
+  owner     User?             @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  agendaFor MeetingAgendaItem[]
+  decisions Decision[]
+  comments    Comment[]
+  fieldValues FieldValue[]
+  blockedBy   ItemDependency[] @relation("BlockedBy")
+  blocking    ItemDependency[] @relation("Blocking")
+  assignees   ItemAssignee[]
+
+  @@index([boardId, status, deletedAt])
+  @@index([ownerId, dueDate])
+  @@index([dueDate])
+  @@map("items")
+}
+
+model Meeting {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @db.Uuid
+  title           String    @db.VarChar(200)
+  startsAt        DateTime
+  endsAt          DateTime
+  location        String?   @db.VarChar(300)
+  /// Identifier returned by the external calendar provider, if any.
+  calendarEventId String?   @db.VarChar(255)
+  /// The one-click join link: a Google Meet URL when Calendar is connected,
+  /// otherwise whatever conferencing link the organiser supplied.
+  joinUrl         String?   @db.VarChar(1000)
+  createdById     String    @db.Uuid
+  cancelledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  attendees MeetingAttendee[]
+  agenda    MeetingAgendaItem[]
+  decisions Decision[]
+
+  @@index([workspaceId, startsAt])
+  @@map("meetings")
+}
+
+model MeetingAttendee {
+  meetingId String  @db.Uuid
+  userId    String  @db.Uuid
+  accepted  Boolean @default(false)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+  @@map("meeting_attendees")
+}
+
+model MeetingAgendaItem {
+  meetingId String @db.Uuid
+  itemId    String @db.Uuid
+  position  Int    @default(0)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, itemId])
+  @@map("meeting_agenda_items")
+}
+
+/// A decision taken in a meeting. Optionally becomes a tracked item.
+model Decision {
+  id             String    @id @default(uuid()) @db.Uuid
+  meetingId      String    @db.Uuid
+  text           String    @db.VarChar(2000)
+  ownerId        String    @db.Uuid
+  dueDate        DateTime?
+  followUpItemId String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+
+  meeting      Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  owner        User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  followUpItem Item?   @relation(fields: [followUpItemId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId])
+  @@map("decisions")
+}
+
+/// Append-only audit trail. Rows are never updated or deleted.
+model Activity {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  actorId        String?      @db.Uuid
+  entityType     String       @db.VarChar(40)
+  entityId       String       @db.Uuid
+  verb           ActivityVerb
+  before         Json?
+  after          Json?
+  requestId      String?      @db.VarChar(64)
+  createdAt      DateTime     @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@map("activities")
+}
+
+/// Per-user OAuth grant for an external calendar. One row per connected user:
+/// events are created as that person, so the meeting appears in their calendar
+/// and Google issues the Meet link on their behalf.
+model CalendarConnection {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @unique @db.Uuid
+  provider       String   @db.VarChar(20)
+  accessToken    String
+  refreshToken   String
+  /// When the access token dies. Refreshed lazily on the next call.
+  expiresAt      DateTime
+  calendarId     String   @default("primary") @db.VarChar(255)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("calendar_connections")
+}
+
+/// A browser push endpoint. One person may have several - laptop, phone, work
+/// machine - so this is keyed by endpoint, not by user.
+model PushSubscription {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  endpoint       String   @unique
+  p256dh         String   @db.VarChar(255)
+  auth           String   @db.VarChar(255)
+  userAgent      String?  @db.VarChar(300)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+/// The in-app notification centre. Written for every push we attempt, so the
+/// bell still shows what happened when the browser declined the notification.
+model Notification {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  userId         String    @db.Uuid
+  title          String    @db.VarChar(200)
+  body           String    @db.VarChar(500)
+  /// Where clicking the notification should land, relative to the web app.
+  url            String?   @db.VarChar(500)
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// A named, reusable set of board filters. `userId` null means the whole
+/// organisation sees it; `boardId` null makes it a cross-board view.
+model SavedView {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
+  boardId        String?  @db.Uuid
+  name           String   @db.VarChar(120)
+  /// The BoardFilters shape from the web client, stored verbatim.
+  filters        Json
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board        Board?       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, boardId])
+  @@index([userId])
+  @@map("saved_views")
+}
+
+/// "blockedItem cannot finish until blockingItem does". Modelled explicitly so
+/// the critical path is queryable, unlike the free-text blockedReason.
+model ItemDependency {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  blockedItemId  String   @db.Uuid
+  blockingItemId String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  blockedItem  Item @relation("BlockedBy", fields: [blockedItemId], references: [id], onDelete: Cascade)
+  blockingItem Item @relation("Blocking", fields: [blockingItemId], references: [id], onDelete: Cascade)
+
+  @@unique([blockedItemId, blockingItemId])
+  @@index([blockingItemId])
+  @@map("item_dependencies")
+}
+
+model Comment {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  itemId         String    @db.Uuid
+  authorId       String    @db.Uuid
+  body           String    @db.VarChar(5000)
+  /// User ids extracted from @mentions at write time, so notifying is a lookup.
+  mentionedIds   String[]  @db.Uuid
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt])
+  @@map("comments")
+}
+
+enum FieldType {
+  TEXT
+  NUMBER
+  CURRENCY
+  DATE
+  SELECT
+  USER
+  CHECKBOX
+}
+
+/// Customer-defined columns. `boardId` null makes the field org-wide.
+model FieldDefinition {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  boardId        String?   @db.Uuid
+  key            String    @db.VarChar(60)
+  label          String    @db.VarChar(80)
+  type           FieldType
+  /// SELECT options, currency code, and anything else type-specific.
+  config         Json?
+  position       Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  board        Board?       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  values       FieldValue[]
+
+  @@unique([organizationId, boardId, key])
+  @@map("field_definitions")
+}
+
+model FieldValue {
+  id      String @id @default(uuid()) @db.Uuid
+  itemId  String @db.Uuid
+  fieldId String @db.Uuid
+  /// Kept as JSON so one table serves every FieldType.
+  value   Json?
+
+  item  Item            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  field FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, fieldId])
+  @@index([fieldId])
+  @@map("field_values")
+}
+
+enum AutomationTrigger {
+  STATUS_CHANGED
+  OWNER_CHANGED
+  DUE_DATE_APPROACHING
+  ITEM_CREATED
+}
+
+enum AutomationAction {
+  NOTIFY_OWNER
+  NOTIFY_USER
+  SET_STATUS
+  SET_PRIORITY
+  ASSIGN_OWNER
+}
+
+/// "When <trigger> matches <condition>, do <action>." Deliberately a narrow
+/// rule shape rather than a scripting language: auditable, and safe to run
+/// inside the request that caused it.
+model Automation {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @db.Uuid
+  boardId        String?           @db.Uuid
+  name           String            @db.VarChar(140)
+  trigger        AutomationTrigger
+  /// e.g. { "status": "BLOCKED" } - the value the trigger must match.
+  condition      Json?
+  action         AutomationAction
+  /// e.g. { "userId": "...", "status": "..." } - parameters for the action.
+  actionConfig   Json?
+  enabled        Boolean           @default(true)
+  lastRunAt      DateTime?
+  runCount       Int               @default(0)
+  createdById    String            @db.Uuid
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  board        Board?       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, enabled])
+  @@map("automations")
+}
+
+/// Per-workspace or per-board access that overrides the org-wide role. A GUEST
+/// with a board grant sees exactly that board and nothing else, which is what
+/// makes external collaborators safe.
+model ScopedAccess {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String   @db.Uuid
+  workspaceId    String?  @db.Uuid
+  boardId        String?  @db.Uuid
+  role           Role
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board        Board?       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, boardId])
+  @@index([organizationId, userId])
+  @@map("scoped_access")
+}
+
+/// Additional people working on an item. `Item.ownerId` stays the single
+/// accountable person - the one the cockpit, workload and "assigned to you"
+/// notifications key off - while this table carries everyone else involved.
+model ItemAssignee {
+  itemId     String   @db.Uuid
+  userId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, userId])
+  @@index([userId])
+  @@map("item_assignees")
+}

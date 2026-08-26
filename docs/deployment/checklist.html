@@ -1,0 +1,223 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>CIS Technologies — Deployment Checklist</title>
+<link rel="stylesheet" href="style.css"></head><body>
+
+<div class="cover">
+  <h1>Deployment Readiness Checklist</h1>
+  <p class="sub">CIS Technologies — work management platform</p>
+  <p class="meta">Cloud-agnostic · everything to do before and after your first push to production</p>
+</div>
+
+<div class="box stop">
+  <b>Read this first — two blockers will break a deploy today</b>
+  <p><b>1. There are no database migrations.</b> <code>apps/api/prisma/</code> contains only
+  <code>schema.prisma</code>. <code>npm run db:migrate</code> runs <code>prisma migrate deploy</code>,
+  which with no <code>migrations/</code> folder does nothing at all and exits 0. Deploy as-is and your
+  production API starts against an empty database. Fixed in §1.1.</p>
+  <p><b>2. The deployed web app cannot reach the API.</b> Vite bakes
+  <code>VITE_API_BASE_URL</code> in at build time; the web Dockerfile never sets it, so the bundle
+  calls <code>/api/v1/…</code> on its own origin — and <code>nginx.conf</code> has no
+  <code>/api</code> proxy. Every request 404s. Fixed in §1.2.</p>
+</div>
+
+<h2>1 · Blockers to clear before anything else</h2>
+
+<h3>1.1 Create the migration baseline <span class="tag red">blocker</span></h3>
+<p>Development used <code>prisma db push</code>, which mutates the database without recording
+history. Production needs versioned, reviewable migrations.</p>
+<p><b>For a brand-new production database</b> — generate the initial migration from the schema:</p>
+<pre><code>cd apps/api
+npx prisma migrate dev --name init      # writes prisma/migrations/…_init/
+git add prisma/migrations &amp;&amp; git commit -m "Add initial migration"</code></pre>
+<p><b>If a database already exists with the schema in it</b> (your local database is in this state),
+baseline it instead so Prisma does not try to recreate tables:</p>
+<pre><code>npx prisma migrate diff \
+  --from-empty --to-schema-datamodel prisma/schema.prisma \
+  --script &gt; prisma/migrations/0_init/migration.sql
+
+npx prisma migrate resolve --applied 0_init</code></pre>
+<div class="box warn"><b>Never run <code>prisma db push</code> against production.</b>
+It has no history, no review step and no rollback, and it will drop columns it believes are unused.
+Development only.</div>
+
+<h3>1.2 Decide how the browser reaches the API <span class="tag red">blocker</span></h3>
+<p>Pick one. Option A is recommended: one origin means no CORS, no build-time URL, and cookies stay
+first-party if you later move tokens into them.</p>
+<table>
+  <tr><th style="width:20%">Option</th><th>What to do</th><th style="width:24%">Trade-off</th></tr>
+  <tr><td><b>A. One domain, path routing</b><br><span class="tag green">recommended</span></td>
+      <td>Route <code>/api/*</code> to the API and everything else to the web container at your load
+      balancer. Leave <code>VITE_API_BASE_URL</code> empty.</td>
+      <td>No CORS. Needs a load balancer that supports path rules.</td></tr>
+  <tr><td><b>B. nginx proxy</b></td>
+      <td>Add to <code>apps/web/nginx.conf</code>:
+      <pre><code>location /api/ {
+  proxy_pass http://api:4000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}</code></pre></td>
+      <td>Web container must resolve the API by DNS.</td></tr>
+  <tr><td><b>C. Separate API domain</b></td>
+      <td>Add a build arg to <code>apps/web/Dockerfile</code>:
+      <pre><code>ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL</code></pre>
+      then build with <code>--build-arg VITE_API_BASE_URL=https://api.example.com</code>.</td>
+      <td>CORS applies. <code>WEB_BASE_URL</code> must match the web origin exactly.</td></tr>
+</table>
+<div class="box"><b>Whichever option you choose:</b> the API's <code>WEB_BASE_URL</code> is the single
+allowed CORS origin (<code>apps/api/src/app.ts</code>). Get it wrong and the app loads but no data
+ever arrives.</div>
+
+<h2>2 · Before you push — code and repository</h2>
+<ul class="chk">
+  <li><b>All three gates pass locally.</b> <code>npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm run test</code></li>
+  <li><b>Production build succeeds.</b> <code>npm run build</code> — not covered by the gates above.</li>
+  <li><b>Both images build.</b> <code>docker build -f apps/api/Dockerfile -t api .</code> and the same for <code>apps/web</code>.</li>
+  <li><b><code>package-lock.json</code> is committed.</b> CI and both Dockerfiles use <code>npm ci</code>, which fails without it.</li>
+  <li><b>No <code>.env</code> file is committed.</b> Check with <code>git ls-files | grep -c "\.env$"</code> — it must print 0.</li>
+  <li><b>Every development secret is regenerated</b> for production (see §3).</li>
+  <li><b>Seeding is not wired into container start.</b> <code>npm run db:seed</code> must be a deliberate one-off, never part of the API boot path.</li>
+  <li><b>CI is green on the branch you are deploying</b>, including the Docker build job.</li>
+</ul>
+
+<h2>3 · Configuration and secrets</h2>
+<p>Validated at boot by <code>apps/api/src/config/env.ts</code>. A missing or malformed value exits
+the process before it serves a request — deliberate, but it means a typo presents as a crash loop.</p>
+<table>
+  <tr><th style="width:26%">Variable</th><th style="width:12%">Required</th><th>Production guidance</th></tr>
+  <tr><td><code>NODE_ENV</code></td><td><span class="tag red">yes</span></td><td><code>production</code>. Anything else keeps development behaviour.</td></tr>
+  <tr><td><code>DATABASE_URL</code></td><td><span class="tag red">yes</span></td><td>Managed Postgres 16. Append <code>?sslmode=require</code>. Never shared with another app.</td></tr>
+  <tr><td><code>JWT_ACCESS_SECRET</code></td><td><span class="tag red">yes</span></td><td>At least 32 chars, unique per environment.</td></tr>
+  <tr><td><code>JWT_REFRESH_SECRET</code></td><td><span class="tag red">yes</span></td><td>Different value from the access secret. Rotating it signs everyone out.</td></tr>
+  <tr><td><code>WEB_BASE_URL</code></td><td><span class="tag red">yes</span></td><td>Exact public web origin — this <i>is</i> the CORS allow-list.</td></tr>
+  <tr><td><code>API_BASE_URL</code></td><td><span class="tag red">yes</span></td><td>Public API origin. Used to build links in outgoing email.</td></tr>
+  <tr><td><code>REDIS_URL</code></td><td>defaulted</td><td>Managed Redis 7. The default localhost value will fail in the cloud.</td></tr>
+  <tr><td><code>EMAIL_DRIVER</code></td><td>defaulted</td><td><b>Set to <code>smtp</code>.</b> The default <code>console</code> silently prints invitations to the log instead of sending them.</td></tr>
+  <tr><td><code>SMTP_*</code>, <code>EMAIL_FROM</code></td><td>if smtp</td><td>Sender must be a domain verified with SPF, DKIM and DMARC.</td></tr>
+  <tr><td><code>VAPID_PUBLIC_KEY</code> / <code>_PRIVATE_KEY</code></td><td>optional</td><td>Generate fresh per environment. Absent means no browser push; the in-app bell still works.</td></tr>
+  <tr><td><code>CALENDAR_DRIVER</code></td><td>defaulted</td><td><code>none</code> means meetings get no join link. <code>google</code> needs the three <code>GOOGLE_*</code> values.</td></tr>
+  <tr><td><code>GOOGLE_REDIRECT_URI</code></td><td>if google</td><td>Must exactly equal the production callback registered in Google Cloud.</td></tr>
+  <tr><td><code>SIGNUP_ORG_SLUG</code></td><td>optional</td><td>Only needed once a second organisation exists. Signup errors clearly rather than guessing.</td></tr>
+  <tr><td><code>RATE_LIMIT_MAX</code></td><td>defaulted</td><td>300/min/IP. Behind a proxy this counts the <i>proxy's</i> IP unless trust proxy is set — see §5.</td></tr>
+</table>
+<pre><code># generate a full set of production secrets
+openssl rand -base64 48   # JWT_ACCESS_SECRET
+openssl rand -base64 48   # JWT_REFRESH_SECRET
+node -e "console.log(require('web-push').generateVAPIDKeys())"</code></pre>
+<div class="box stop"><b>Do not reuse the development VAPID keys or JWT secrets.</b>
+They exist in shell history, in the working tree and in any screenshot shared during development.
+Treat every one of them as public.</div>
+
+<h2 class="page">4 · Database</h2>
+<ul class="chk">
+  <li><b>A dedicated database.</b> Not shared with another application, and not a schema inside
+  someone else's database.</li>
+  <li><b>Automated backups on, with a tested restore.</b> An untested backup is a hope, not a backup.</li>
+  <li><b>Point-in-time recovery enabled.</b> Decide the acceptable data-loss window and confirm
+  retention actually meets it.</li>
+  <li><b>TLS enforced</b> on the connection (<code>sslmode=require</code> or stricter).</li>
+  <li><b>Least-privilege application user</b> — DML and DDL for migrations, but not superuser and not
+  able to create databases.</li>
+  <li><b>Migration runs as its own step</b> before the new API rolls out, never on container start —
+  two replicas booting at once would race each other.</li>
+  <li><b>Connection-pool sizing checked.</b> Prisma defaults to <code>num_cpus × 2 + 1</code> per
+  instance; replicas × pool size must stay under the database's <code>max_connections</code>.</li>
+</ul>
+<h3>Seeding production</h3>
+<p><code>prisma/seed.ts</code> creates a demo organisation, four users sharing one password, and
+sample boards. <b>Never run it against production.</b> Create exactly one real owner, then use the
+in-app invitation and approval flows.</p>
+
+<h2>5 · Security review before go-live</h2>
+<table>
+  <tr><th style="width:28%">Area</th><th>What to verify</th></tr>
+  <tr><td>HTTPS everywhere</td><td>TLS at the load balancer, HTTP redirected, HSTS enabled.</td></tr>
+  <tr><td>Trust proxy</td><td>Express must trust the proxy or rate limiting and audit IPs all see the load balancer address. Set <code>app.set('trust proxy', 1)</code>.</td></tr>
+  <tr><td>CORS</td><td><code>WEB_BASE_URL</code> is one exact origin. Never a wildcard.</td></tr>
+  <tr><td>Secrets at rest</td><td>Injected from a secret manager. Not in the image, not inline in a task definition, not in git.</td></tr>
+  <tr><td>Refresh-token storage</td><td><span class="tag amber">accepted risk</span> The refresh token lives in <code>localStorage</code> (<code>useAuth.tsx</code>) — a deliberate, documented choice, but readable by any XSS. Move to an httpOnly cookie if you handle sensitive data.</td></tr>
+  <tr><td>Password policy</td><td>12+ chars with upper, lower and digit, enforced by one shared schema on client and server. Argon2id hashing.</td></tr>
+  <tr><td>Self-signup</td><td>Anyone can request an account. Confirm an admin watches the approvals queue, or disable the route before launch.</td></tr>
+  <tr><td>Role boundaries</td><td>Re-test after deploy: MANAGER sees all work but not Admin; MEMBER sees only their own boards, tasks and meetings.</td></tr>
+  <tr><td>Container user</td><td>Both images already run as non-root. Keep it that way.</td></tr>
+  <tr><td>Dependency audit</td><td><code>npm audit --omit=dev</code> — triage anything high or critical.</td></tr>
+</table>
+
+<h2>6 · Release sequence</h2>
+<ol>
+  <li><b>Tag the release.</b> <code>git tag -a v1.0.0 -m "…" &amp;&amp; git push --tags</code></li>
+  <li><b>Build and push both images</b> tagged with the commit SHA — never only <code>latest</code>, or you cannot roll back.</li>
+  <li><b>Run migrations</b> as a one-off task on the new image: <code>npx prisma migrate deploy</code>. Wait for success.</li>
+  <li><b>Deploy the API.</b> Wait for <code>/api/v1/health/ready</code> to return 200 — it checks database and cache.</li>
+  <li><b>Deploy the web bundle.</b></li>
+  <li><b>Run the smoke tests in §7.</b></li>
+  <li><b>Watch 5xx rate and job failures</b> for one full release cycle before walking away.</li>
+</ol>
+<div class="box"><b>Migrations must stay backwards compatible with the running code.</b>
+Add columns nullable, backfill, make them required in a <i>later</i> release. Rolling back means
+deploying the previous image — it does not mean reversing a migration.</div>
+
+<h2>7 · After deploy — verification runbook</h2>
+<pre><code>curl -fsS https://YOUR_DOMAIN/api/v1/health/live     # process is up
+curl -fsS https://YOUR_DOMAIN/api/v1/health/ready    # database + redis reachable
+# expect: {"success":true,"data":{"status":"ready","checks":{"database":true,"cache":true}}}</code></pre>
+<ul class="chk">
+  <li>Web app loads over HTTPS with no console errors.</li>
+  <li>Sign in as the owner account you created.</li>
+  <li>Create a workspace, a board and a task; reload and confirm all three persisted.</li>
+  <li>Change a task's status and owner; confirm the assignee gets a notification.</li>
+  <li>Schedule a meeting; confirm the clash warning appears for an overlapping time.</li>
+  <li>Request an account from the sign-in page; confirm it appears in Admin → Approvals and that
+      signing in before approval is refused.</li>
+  <li>Sign in as a MEMBER: the Admin nav is absent and <code>/admin</code> redirects home.</li>
+  <li>Confirm a MEMBER cannot open a board they are not on, by pasting its URL.</li>
+  <li>Trigger an invitation and confirm the email actually arrives — not merely that it queued.</li>
+  <li>Export a board to CSV and open the file.</li>
+</ul>
+
+<h2>8 · Operating it</h2>
+<h4>Monitor</h4>
+<ul>
+  <li>5xx rate and p95 latency per route</li>
+  <li><code>/health/ready</code> as the load-balancer health check — <code>/health/live</code> only proves the process exists</li>
+  <li>Database CPU, connection count, free storage</li>
+  <li>Redis memory and evictions</li>
+  <li>Email queue depth and failure count</li>
+  <li>TLS certificate expiry</li>
+</ul>
+<h4>Alert on</h4>
+<ul>
+  <li>Ready check failing on any instance for more than 2 minutes</li>
+  <li>5xx rate above your error budget</li>
+  <li>Database connections above roughly 80% of max</li>
+  <li>Disk above 80%</li>
+</ul>
+<h4>Log hygiene</h4>
+<p>Logging is structured JSON via pino and request bodies are redacted. Confirm no secret or password
+reaches the log aggregator before shipping logs to a third party.</p>
+
+<h2>9 · Known gaps — decide before launch</h2>
+<table>
+  <tr><th style="width:30%">Gap</th><th>Impact and options</th></tr>
+  <tr><td><b>No SSO / SAML / SCIM</b></td><td>Enterprise buyers will ask. Password auth only today. A multi-week piece of work.</td></tr>
+  <tr><td><b>No file attachments</b></td><td>Tasks take comments but not files. Needs an object-store decision first.</td></tr>
+  <tr><td><b>Custom fields are not board columns</b></td><td>Definable and storable through Admin, but they do not render on the board yet.</td></tr>
+  <tr><td><b>No scheduled digests</b></td><td>CSV export exists; the Monday-morning email does not. The queue is already in place.</td></tr>
+  <tr><td><b>Microsoft calendar unimplemented</b></td><td><code>CALENDAR_DRIVER=microsoft</code> silently falls back to no links.</td></tr>
+  <tr><td><b>Email worker shares the API process</b></td><td>Fine at low volume. Split into its own replica set as volume grows.</td></tr>
+  <tr><td><b>Dashboard aggregate computed live</b></td><td>The first query likely to become slow. Move behind a materialised view when it does.</td></tr>
+</table>
+
+<h2>10 · One-page summary</h2>
+<table>
+  <tr><th style="width:16%">Phase</th><th>Must be done</th></tr>
+  <tr><td><b>Blockers</b></td><td>Create migration baseline · choose web-to-API routing</td></tr>
+  <tr><td><b>Before</b></td><td>Gates green · images build · lockfile committed · no <code>.env</code> in git · fresh secrets · seed disarmed</td></tr>
+  <tr><td><b>Config</b></td><td>All required env set · <code>EMAIL_DRIVER=smtp</code> · <code>WEB_BASE_URL</code> exact · secrets from a manager</td></tr>
+  <tr><td><b>Data</b></td><td>Dedicated database · backups plus tested restore · TLS · migration as its own step</td></tr>
+  <tr><td><b>Deploy</b></td><td>SHA-tagged images · migrate · API · wait for ready · web</td></tr>
+  <tr><td><b>After</b></td><td>Health checks · smoke tests · role boundaries · real email delivery · monitoring live</td></tr>
+</table>
+
+</body></html>

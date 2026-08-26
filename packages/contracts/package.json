@@ -1,0 +1,28 @@
+{
+  "name": "@ewp/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Request/response contracts shared by the API and the web client. Single source of truth.",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cjs/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.esm.json && node -e \"require('fs').writeFileSync('dist/esm/package.json', JSON.stringify({type:'module'}))\"",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": { "zod": "^3.23.8" },
+  "devDependencies": {
+    "@ewp/eslint-config": "*",
+    "@ewp/tsconfig": "*",
+    "typescript": "^5.5.3"
+  }
+}

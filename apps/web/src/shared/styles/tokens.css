@@ -1,0 +1,179 @@
+/*
+ * Design tokens. Components reference these variables and never literal values,
+ * so a rebrand or a dark theme is a change in this file alone.
+ *
+ * Identity: white surfaces, deep navy chrome and type. Status and priority keep
+ * their own distinct hues - they are the one place colour carries meaning, so
+ * they must never collapse into the brand blue.
+ */
+:root {
+  /* Surfaces: white, with the faintest blue-grey behind cards. */
+  --paper: #f7f9fc;
+  --surface: #ffffff;
+  --surface-sunk: #eef2f8;
+  --surface-raised: #ffffff;
+  --line: #dde5f0;
+  --line-strong: #c3cfe2;
+
+  /* Ink: navy rather than black, so text and chrome share one family. */
+  --ink: #0d1b3e;
+  --ink-secondary: #3d4d70;
+  --ink-muted: #6b7a9b;
+
+  /* The brand blue. */
+  --accent: #14307a;
+  --accent-hover: #0d2260;
+  --accent-wash: #e8edf9;
+  --accent-line: #b9c6e6;
+
+  /* Navy chrome: the sidebar and any inverted surface. */
+  --navy: #0d1b3e;
+  --navy-deep: #081128;
+  --navy-ink: #eaf0fb;
+  --navy-ink-muted: #93a3c4;
+  --navy-line: #1e2f57;
+  --navy-active-bg: #1a2f60;
+  --navy-active-ink: #ffffff;
+
+  /* Status. Deliberately not blue - these must stay distinguishable. */
+  --on-track: #0f7a52;
+  --on-track-wash: #e2f4ec;
+  --at-risk: #a35a00;
+  --at-risk-wash: #fdf0dd;
+  --blocked: #b3261e;
+  --blocked-wash: #fdeaea;
+
+  /* Neutral status: work that exists but has not started. */
+  --neutral: #5a6785;
+  --neutral-wash: #eceff6;
+
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Type scale. Page titles are the only place the serif appears. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --text-3xl: 32px;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Elevation. Three steps only: resting, raised, floating. Tinted navy. */
+  --shadow-sm: 0 1px 2px rgba(13, 27, 62, 0.06);
+  --shadow-md: 0 4px 12px rgba(13, 27, 62, 0.1);
+  --shadow-lg: 0 16px 40px rgba(13, 27, 62, 0.18);
+
+  --ring: 0 0 0 3px var(--accent-wash);
+  --transition: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  --z-sticky: 10;
+  --z-dropdown: 40;
+  --z-modal: 60;
+
+  --shell-width: 1440px;
+  --sidebar-width: 236px;
+  --topbar-height: 56px;
+}
+
+/*
+ * Dark theme: the same navy, taken all the way down. Only the palette is
+ * redefined - every size, radius and shadow above is shared, which is what
+ * keeps the two themes from drifting apart.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #060c1c;
+    --surface: #0d1730;
+    --surface-sunk: #142141;
+    --surface-raised: #142141;
+    --line: #1c2c52;
+    --line-strong: #2c3f6d;
+
+    --ink: #e9eefb;
+    --ink-secondary: #a8b6d6;
+    --ink-muted: #7c8cb2;
+
+    --accent: #7f9cf5;
+    --accent-hover: #9bb2f8;
+    --accent-wash: #16224a;
+    --accent-line: #2b3c6e;
+
+    --navy: #0a132b;
+    --navy-deep: #060c1c;
+    --navy-ink: #e9eefb;
+    --navy-ink-muted: #8494b8;
+    --navy-line: #1a2749;
+    --navy-active-bg: #1c2c58;
+    --navy-active-ink: #ffffff;
+
+    --on-track: #4fc99a;
+    --on-track-wash: #0e2c22;
+    --at-risk: #e2a552;
+    --at-risk-wash: #2f2413;
+    --blocked: #f08a82;
+    --blocked-wash: #34191a;
+
+    --neutral: #93a2c2;
+    --neutral-wash: #17223f;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #060c1c;
+  --surface: #0d1730;
+  --surface-sunk: #142141;
+  --surface-raised: #142141;
+  --line: #1c2c52;
+  --line-strong: #2c3f6d;
+
+  --ink: #e9eefb;
+  --ink-secondary: #a8b6d6;
+  --ink-muted: #7c8cb2;
+
+  --accent: #7f9cf5;
+  --accent-hover: #9bb2f8;
+  --accent-wash: #16224a;
+  --accent-line: #2b3c6e;
+
+  --navy: #0a132b;
+  --navy-deep: #060c1c;
+  --navy-ink: #e9eefb;
+  --navy-ink-muted: #8494b8;
+  --navy-line: #1a2749;
+  --navy-active-bg: #1c2c58;
+  --navy-active-ink: #ffffff;
+
+  --on-track: #4fc99a;
+  --on-track-wash: #0e2c22;
+  --at-risk: #e2a552;
+  --at-risk-wash: #2f2413;
+  --blocked: #f08a82;
+  --blocked-wash: #34191a;
+
+  --neutral: #93a2c2;
+  --neutral-wash: #17223f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+}

@@ -1,0 +1,374 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>CIS Technologies — AWS Deployment Guide</title>
+<link rel="stylesheet" href="style.css"></head><body>
+
+<div class="cover">
+  <h1>AWS Deployment Guide</h1>
+  <p class="sub">CIS Technologies — work management platform</p>
+  <p class="meta">ECS Fargate · RDS PostgreSQL · ElastiCache Redis · ALB · ECR · Secrets Manager · SES</p>
+</div>
+
+<div class="box"><b>Read the Deployment Readiness Checklist first.</b>
+Two blockers there must be cleared before any of this works: the Prisma migration baseline, and how
+the browser reaches the API. This guide assumes both are done and uses <b>one domain with
+path routing</b>, which is Option A in that document.</div>
+
+<h2>1 · Target architecture</h2>
+<pre><code>                        Route 53  (cis.example.com)
+                             |
+                     ACM cert (us-east-1 for CloudFront, else same region)
+                             |
+                 +-----------------------+
+                 |  Application Load     |   :443  public subnets
+                 |  Balancer             |
+                 +-----------+-----------+
+              /api/*  |             |  everything else
+                      v             v
+            +------------------+  +------------------+
+            | ECS Fargate      |  | ECS Fargate      |    private subnets
+            | api  :4000       |  | web (nginx) :80  |
+            +---------+--------+  +------------------+
+                      |
+        +-------------+--------------+
+        v                            v
++------------------+       +--------------------+          private, isolated
+| RDS PostgreSQL16 |       | ElastiCache Redis7 |
++------------------+       +--------------------+
+
+Supporting: ECR (images) · Secrets Manager (config) · CloudWatch (logs, alarms)
+            SES (email) · S3 (optional CSV/export storage)</code></pre>
+
+<h3>Why this shape</h3>
+<ul>
+  <li><b>One ALB, path-routed.</b> <code>/api/*</code> to the API target group, everything else to
+  the web target group. Single origin, so no CORS and no build-time API URL.</li>
+  <li><b>Fargate, not EC2.</b> No servers to patch. Both images already run as non-root with health
+  checks, so they drop straight in.</li>
+  <li><b>Databases in isolated subnets</b> with no route to the internet, reachable only from the
+  task security group.</li>
+</ul>
+
+<h3>Alternatives, honestly</h3>
+<table>
+  <tr><th style="width:22%">Option</th><th>When it is the better choice</th></tr>
+  <tr><td><b>App Runner</b></td><td>Fastest path. Fine for the API, but you still need a VPC connector to reach RDS, and path-routing two services onto one domain is awkward. Good for a demo, weak for production.</td></tr>
+  <tr><td><b>Elastic Beanstalk</b></td><td>Only if your team already runs it. Otherwise it hides the parts you will eventually need to tune.</td></tr>
+  <tr><td><b>S3 + CloudFront for the web</b></td><td>Cheaper and faster than running an nginx task, but you then need Option C from the checklist (separate API domain, CORS, build-arg). Worth it at scale; more moving parts on day one.</td></tr>
+  <tr><td><b>EKS</b></td><td>Only if you already run Kubernetes. Enormous overkill for two containers.</td></tr>
+</table>
+
+<h2>2 · Prerequisites</h2>
+<ul class="chk">
+  <li>AWS account with billing alerts already configured.</li>
+  <li>AWS CLI v2 installed and <code>aws sts get-caller-identity</code> returns your account.</li>
+  <li>A registered domain, ideally in Route 53.</li>
+  <li>An IAM user or role for deployment — <b>not</b> the account root.</li>
+  <li>Docker able to build both images locally.</li>
+  <li>A region chosen and used consistently. <code>ap-south-1</code> (Mumbai) if your users are in India.</li>
+</ul>
+<pre><code>export AWS_REGION=ap-south-1
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export APP=cis</code></pre>
+
+<h2>3 · Networking</h2>
+<p>Three subnet tiers across two Availability Zones. Two AZs is the minimum for an ALB and for RDS
+Multi-AZ.</p>
+<table>
+  <tr><th style="width:24%">Tier</th><th>Contains</th><th style="width:26%">Internet</th></tr>
+  <tr><td><b>Public</b> ×2</td><td>ALB, NAT gateway</td><td>Internet gateway</td></tr>
+  <tr><td><b>Private</b> ×2</td><td>ECS tasks (api, web)</td><td>Outbound via NAT only</td></tr>
+  <tr><td><b>Isolated</b> ×2</td><td>RDS, ElastiCache</td><td>None</td></tr>
+</table>
+<h3>Security groups — the whole matrix</h3>
+<table>
+  <tr><th>Group</th><th>Inbound</th><th>From</th></tr>
+  <tr><td><code>sg-alb</code></td><td>443, 80</td><td>0.0.0.0/0</td></tr>
+  <tr><td><code>sg-ecs-web</code></td><td>80</td><td><code>sg-alb</code></td></tr>
+  <tr><td><code>sg-ecs-api</code></td><td>4000</td><td><code>sg-alb</code></td></tr>
+  <tr><td><code>sg-rds</code></td><td>5432</td><td><code>sg-ecs-api</code> only</td></tr>
+  <tr><td><code>sg-redis</code></td><td>6379</td><td><code>sg-ecs-api</code> only</td></tr>
+</table>
+<div class="box warn"><b>Reference security groups, never CIDR ranges, for the database rules.</b>
+A CIDR that happens to cover your VPC will quietly expose Postgres to every resource in it.</div>
+<p class="meta">Cost note: a NAT gateway is roughly $32/month per AZ plus data charges — often the
+largest line item in a small deployment. One NAT in a single AZ is an acceptable saving for staging,
+not for production.</p>
+
+<h2 class="page">4 · RDS PostgreSQL</h2>
+<pre><code>aws rds create-db-instance \
+  --db-instance-identifier $APP-prod \
+  --engine postgres --engine-version 16 \
+  --db-instance-class db.t4g.micro \
+  --allocated-storage 20 --storage-type gp3 --storage-encrypted \
+  --master-username cisadmin \
+  --manage-master-user-password \
+  --db-subnet-group-name $APP-isolated \
+  --vpc-security-group-ids sg-rds \
+  --backup-retention-period 7 \
+  --multi-az \
+  --no-publicly-accessible \
+  --deletion-protection</code></pre>
+<ul>
+  <li><code>--manage-master-user-password</code> puts the password straight into Secrets Manager and
+  rotates it — you never handle it.</li>
+  <li><code>--storage-encrypted</code> cannot be added later without a snapshot restore. Set it now.</li>
+  <li><code>--deletion-protection</code> has saved more production databases than any runbook.</li>
+  <li><code>db.t4g.micro</code> suits a pilot. Move to <code>db.t4g.small</code> or larger once the
+  dashboard aggregate is under real load.</li>
+</ul>
+<h3>Create the application user</h3>
+<p>Do not run the app as the master user. Connect once via a bastion or an ECS exec session:</p>
+<pre><code>CREATE DATABASE cis;
+CREATE USER cis_app WITH PASSWORD '&lt;from Secrets Manager&gt;';
+GRANT ALL PRIVILEGES ON DATABASE cis TO cis_app;
+\c cis
+GRANT ALL ON SCHEMA public TO cis_app;</code></pre>
+<p>Connection string, stored as a secret:</p>
+<pre><code>postgresql://cis_app:PASSWORD@cis-prod.xxxx.ap-south-1.rds.amazonaws.com:5432/cis?sslmode=require</code></pre>
+
+<h2>5 · ElastiCache Redis</h2>
+<pre><code>aws elasticache create-replication-group \
+  --replication-group-id $APP-redis \
+  --replication-group-description "CIS queue and cache" \
+  --engine redis --engine-version 7.1 \
+  --cache-node-type cache.t4g.micro \
+  --num-cache-clusters 2 \
+  --automatic-failover-enabled \
+  --transit-encryption-enabled \
+  --cache-subnet-group-name $APP-isolated \
+  --security-group-ids sg-redis</code></pre>
+<div class="box warn"><b>With transit encryption on, the URL scheme is <code>rediss://</code> — two s.</b>
+<code>redis://</code> will fail to connect, and the error is not obvious.</div>
+
+<h2>6 · ECR and images</h2>
+<pre><code>aws ecr create-repository --repository-name $APP-api
+aws ecr create-repository --repository-name $APP-web
+
+aws ecr get-login-password --region $AWS_REGION \
+  | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+SHA=$(git rev-parse --short HEAD)
+REG=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+docker build -f apps/api/Dockerfile -t $REG/$APP-api:$SHA .
+docker build -f apps/web/Dockerfile -t $REG/$APP-web:$SHA .
+docker push $REG/$APP-api:$SHA
+docker push $REG/$APP-web:$SHA</code></pre>
+<div class="box"><b>Tag with the commit SHA, always.</b> <code>latest</code> makes rollback
+impossible and makes "which build is running?" unanswerable. Enable ECR scan-on-push and a lifecycle
+policy that expires untagged images after 14 days.</div>
+<p class="meta">Building on an Apple Silicon Mac? Add <code>--platform linux/amd64</code>, or your
+tasks will fail to start with an exec format error.</p>
+
+<h2>7 · Secrets Manager</h2>
+<pre><code>aws secretsmanager create-secret --name $APP/prod/api --secret-string '{
+  "DATABASE_URL":"postgresql://cis_app:...@...:5432/cis?sslmode=require",
+  "REDIS_URL":"rediss://cis-redis...:6379",
+  "JWT_ACCESS_SECRET":"...48 random bytes...",
+  "JWT_REFRESH_SECRET":"...different 48 random bytes...",
+  "VAPID_PUBLIC_KEY":"...",
+  "VAPID_PRIVATE_KEY":"...",
+  "SMTP_USER":"...",
+  "SMTP_PASSWORD":"..."
+}'</code></pre>
+<p>In the task definition, reference each key individually under <code>secrets</code> so values never
+appear in the definition body, and keep non-sensitive values in <code>environment</code>:</p>
+<pre><code>"secrets": [
+  { "name": "DATABASE_URL",
+    "valueFrom": "arn:aws:secretsmanager:...:secret:cis/prod/api:DATABASE_URL::" }
+],
+"environment": [
+  { "name": "NODE_ENV",      "value": "production" },
+  { "name": "WEB_BASE_URL",  "value": "https://cis.example.com" },
+  { "name": "API_BASE_URL",  "value": "https://cis.example.com" },
+  { "name": "EMAIL_DRIVER",  "value": "smtp" },
+  { "name": "SMTP_HOST",     "value": "email-smtp.ap-south-1.amazonaws.com" },
+  { "name": "SMTP_PORT",     "value": "587" },
+  { "name": "SMTP_SECURE",   "value": "false" }
+]</code></pre>
+<p>The task <b>execution</b> role needs <code>secretsmanager:GetSecretValue</code> on that ARN, plus
+the managed <code>AmazonECSTaskExecutionRolePolicy</code>.</p>
+
+<h2 class="page">8 · ALB, certificate and DNS</h2>
+<ol>
+  <li>Request an ACM certificate for <code>cis.example.com</code> in your application region and
+  validate by DNS.</li>
+  <li>Create an internet-facing ALB in the public subnets with <code>sg-alb</code>.</li>
+  <li>Create two target groups, both <b>type IP</b> (required for Fargate awsvpc networking):
+    <table>
+      <tr><th>Target group</th><th>Port</th><th>Health check</th></tr>
+      <tr><td><code>tg-api</code></td><td>4000</td><td><code>/api/v1/health/ready</code></td></tr>
+      <tr><td><code>tg-web</code></td><td>80</td><td><code>/</code></td></tr>
+    </table>
+  </li>
+  <li>HTTPS :443 listener — default action forward to <code>tg-web</code>; add rule
+  <b>path is <code>/api/*</code> → forward to <code>tg-api</code></b> at priority 1.</li>
+  <li>HTTP :80 listener — redirect permanently to HTTPS.</li>
+  <li>Route 53 A-record alias for <code>cis.example.com</code> pointing at the ALB.</li>
+</ol>
+<div class="box ok"><b>Use <code>/health/ready</code> as the health check, not <code>/health/live</code>.</b>
+Ready verifies the database and Redis are actually reachable; live only proves the Node
+process exists, so a task with a broken database would keep receiving traffic.</div>
+
+<h2>9 · ECS cluster, tasks and services</h2>
+<pre><code>aws ecs create-cluster --cluster-name $APP-prod \
+  --capacity-providers FARGATE --settings name=containerInsights,value=enabled</code></pre>
+<table>
+  <tr><th style="width:20%">Task</th><th style="width:16%">Size</th><th>Notes</th></tr>
+  <tr><td><code>cis-api</code></td><td>0.5 vCPU / 1 GB</td><td>Port 4000. Desired count 2 for zero-downtime deploys.</td></tr>
+  <tr><td><code>cis-web</code></td><td>0.25 vCPU / 0.5 GB</td><td>Port 80. Static nginx; 2 tasks is ample.</td></tr>
+  <tr><td><code>cis-migrate</code></td><td>0.5 vCPU / 1 GB</td><td>Same image as the API, command overridden. Run once per release, never as a service.</td></tr>
+</table>
+<p>Log configuration on every task:</p>
+<pre><code>"logConfiguration": {
+  "logDriver": "awslogs",
+  "options": {
+    "awslogs-group": "/ecs/cis-api",
+    "awslogs-region": "ap-south-1",
+    "awslogs-stream-prefix": "ecs",
+    "awslogs-create-group": "true"
+  }
+}</code></pre>
+<p>Create both services in the private subnets, attached to their target groups, with
+<code>--health-check-grace-period-seconds 60</code> so the API is not killed while it boots.</p>
+
+<h3>Running the migration</h3>
+<pre><code>aws ecs run-task --cluster $APP-prod \
+  --task-definition cis-migrate --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-a,subnet-b],securityGroups=[sg-ecs-api]}" \
+  --overrides '{"containerOverrides":[{"name":"migrate",
+      "command":["npx","prisma","migrate","deploy"]}]}'</code></pre>
+<p>Wait for the task to reach <code>STOPPED</code> with exit code 0 before deploying the API. If it
+exits non-zero, stop — do not roll the API forward onto a half-migrated schema.</p>
+
+<h2>10 · Email with SES</h2>
+<ol>
+  <li>Verify your sending domain in SES and publish the DKIM records it gives you.</li>
+  <li>Add SPF and a DMARC policy. Without them your invitations land in spam.</li>
+  <li><b>Request production access</b> — the sandbox only sends to verified addresses, which will
+  look like "invitations are broken" during your first test.</li>
+  <li>Create SMTP credentials (these are <i>not</i> your IAM keys) and store them in the secret.</li>
+  <li>Set <code>EMAIL_DRIVER=smtp</code>, host <code>email-smtp.&lt;region&gt;.amazonaws.com</code>,
+  port 587.</li>
+</ol>
+
+<h2>11 · First run</h2>
+<ol>
+  <li>Confirm the migration task succeeded.</li>
+  <li><code>curl https://cis.example.com/api/v1/health/ready</code> returns
+  <code>"database":true,"cache":true</code>.</li>
+  <li>Create the first owner. <b>Do not run the seed.</b> Either register through
+  <code>POST /api/v1/auth/register</code> once (it creates the organisation and an OWNER), or insert
+  one membership manually.</li>
+  <li>Sign in, create the real workspace and boards.</li>
+  <li>Invite the rest of the team, or let them use Request access and approve them.</li>
+  <li>Work through the smoke tests in §7 of the checklist.</li>
+</ol>
+
+<h2 class="page">12 · CI/CD with GitHub Actions</h2>
+<p>Use OIDC — no long-lived AWS keys in GitHub.</p>
+<pre><code>permissions: { id-token: write, contents: read }
+
+steps:
+  - uses: aws-actions/configure-aws-credentials@v4
+    with:
+      role-to-assume: arn:aws:iam::ACCOUNT:role/github-deploy
+      aws-region: ap-south-1
+
+  - uses: aws-actions/amazon-ecr-login@v2
+
+  - name: Build and push
+    run: |
+      SHA=${GITHUB_SHA::7}
+      docker build -f apps/api/Dockerfile -t $REG/cis-api:$SHA .
+      docker build -f apps/web/Dockerfile -t $REG/cis-web:$SHA .
+      docker push $REG/cis-api:$SHA
+      docker push $REG/cis-web:$SHA
+
+  - name: Migrate
+    run: aws ecs run-task --cluster cis-prod --task-definition cis-migrate ...
+
+  - name: Deploy
+    run: |
+      aws ecs update-service --cluster cis-prod --service cis-api --force-new-deployment
+      aws ecs update-service --cluster cis-prod --service cis-web --force-new-deployment</code></pre>
+<p>Trust policy on <code>github-deploy</code> must pin the repository and branch, or any repo on
+GitHub can assume it:</p>
+<pre><code>"Condition": {
+  "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
+  "StringLike":   { "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_REPO:ref:refs/heads/main" }
+}</code></pre>
+
+<h2>13 · Monitoring and alarms</h2>
+<table>
+  <tr><th style="width:34%">Alarm</th><th>Threshold</th></tr>
+  <tr><td>ALB <code>HTTPCode_Target_5XX_Count</code></td><td>&gt; 10 in 5 min</td></tr>
+  <tr><td>ALB <code>UnHealthyHostCount</code></td><td>≥ 1 for 2 min</td></tr>
+  <tr><td>ALB <code>TargetResponseTime</code> p95</td><td>&gt; 1s for 5 min</td></tr>
+  <tr><td>RDS <code>CPUUtilization</code></td><td>&gt; 80% for 10 min</td></tr>
+  <tr><td>RDS <code>DatabaseConnections</code></td><td>&gt; 80% of max</td></tr>
+  <tr><td>RDS <code>FreeStorageSpace</code></td><td>&lt; 20%</td></tr>
+  <tr><td>ElastiCache <code>DatabaseMemoryUsagePercentage</code></td><td>&gt; 75%</td></tr>
+  <tr><td>ECS <code>RunningTaskCount</code></td><td>&lt; desired for 5 min</td></tr>
+</table>
+<p>Send them all to one SNS topic with a real email or pager attached. An alarm nobody receives is
+decoration.</p>
+<h4>Auto scaling</h4>
+<pre><code>aws application-autoscaling register-scalable-target \
+  --service-namespace ecs --scalable-dimension ecs:service:DesiredCount \
+  --resource-id service/cis-prod/cis-api --min-capacity 2 --max-capacity 6
+# then a target-tracking policy at 65% average CPU</code></pre>
+
+<h2>14 · Backup and recovery</h2>
+<ul class="chk">
+  <li>RDS automated backups retained at least 7 days (30 for anything regulated).</li>
+  <li><b>Restore rehearsed at least once</b> into a scratch instance. Time it — that number is your
+  actual RTO, whatever the plan claims.</li>
+  <li>Final snapshot before any destructive change.</li>
+  <li>Deletion protection on in production.</li>
+  <li>Redis needs no backup: it holds the queue and cache only, and rebuilds on its own.</li>
+  <li>ECR lifecycle policy keeps recent tagged images so rollback stays possible.</li>
+</ul>
+
+<h2>15 · Indicative monthly cost</h2>
+<table>
+  <tr><th>Item</th><th style="width:20%">Small</th><th style="width:20%">Production</th></tr>
+  <tr><td>ECS Fargate (api + web)</td><td>~$25</td><td>~$70</td></tr>
+  <tr><td>RDS PostgreSQL</td><td>~$15 single-AZ</td><td>~$60 Multi-AZ</td></tr>
+  <tr><td>ElastiCache Redis</td><td>~$12</td><td>~$30 with replica</td></tr>
+  <tr><td>ALB</td><td>~$18</td><td>~$22</td></tr>
+  <tr><td>NAT gateway</td><td>~$32 one AZ</td><td>~$65 two AZ</td></tr>
+  <tr><td>Data transfer, logs, ECR, SES</td><td>~$10</td><td>~$30</td></tr>
+  <tr><td><b>Approximate total</b></td><td><b>~$110/mo</b></td><td><b>~$280/mo</b></td></tr>
+</table>
+<p class="meta">ap-south-1, on-demand, mid-2026 list prices. Verify against the AWS pricing
+calculator before committing. Compute Savings Plans cut the Fargate line by roughly 20–30%; VPC
+endpoints for ECR and Secrets Manager can remove much of the NAT cost.</p>
+
+<h2>16 · Common failures and what they mean</h2>
+<table>
+  <tr><th style="width:36%">Symptom</th><th>Cause</th></tr>
+  <tr><td>Task starts then stops, exit 1, no logs</td><td>Env validation failed at boot. Check the log group — the missing variable is named.</td></tr>
+  <tr><td>Target group permanently unhealthy</td><td>Health path wrong, security group blocks the ALB, or grace period too short for boot.</td></tr>
+  <tr><td>API cannot reach the database</td><td><code>sg-rds</code> not referencing <code>sg-ecs-api</code>, or the task is in a subnet with no route.</td></tr>
+  <tr><td>Redis connection timeout</td><td><code>redis://</code> used where transit encryption requires <code>rediss://</code>.</td></tr>
+  <tr><td>App loads, every API call 404s</td><td>The <code>/api/*</code> listener rule is missing or below the default rule in priority.</td></tr>
+  <tr><td>App loads, every API call CORS-blocked</td><td><code>WEB_BASE_URL</code> does not exactly match the browser origin.</td></tr>
+  <tr><td>Login works, tables are empty</td><td>Migration never ran. This is blocker 1 from the checklist.</td></tr>
+  <tr><td>Invitations never arrive</td><td>SES still in sandbox, or <code>EMAIL_DRIVER</code> left as <code>console</code>.</td></tr>
+  <tr><td><code>exec format error</code></td><td>Image built on ARM without <code>--platform linux/amd64</code>.</td></tr>
+</table>
+
+<h2>17 · Teardown</h2>
+<pre><code>aws ecs update-service --cluster cis-prod --service cis-api --desired-count 0
+aws ecs update-service --cluster cis-prod --service cis-web --desired-count 0
+aws ecs delete-service  --cluster cis-prod --service cis-api --force
+aws ecs delete-service  --cluster cis-prod --service cis-web --force
+aws rds delete-db-instance --db-instance-identifier cis-prod \
+    --final-db-snapshot-identifier cis-final-$(date +%Y%m%d)
+aws elasticache delete-replication-group --replication-group-id cis-redis
+# then: ALB, NAT gateway, VPC, ECR repositories, secrets</code></pre>
+<div class="box warn"><b>Delete the NAT gateway explicitly.</b> It bills hourly whether or not
+anything uses it, and it survives deleting the services that needed it.</div>
+
+</body></html>

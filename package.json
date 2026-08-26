@@ -1,0 +1,31 @@
+{
+  "name": "exec-work-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CIS Technologies - work management platform: Todo, boards, members, meetings",
+  "engines": { "node": ">=20.11.0", "npm": ">=10.0.0" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspace=@ewp/contracts && npm run build --workspace=@ewp/api && npm run build --workspace=@ewp/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css}\"",
+    "db:migrate": "npm run db:migrate --workspace=@ewp/api",
+    "db:seed": "npm run db:seed --workspace=@ewp/api",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+    "*.{json,md,css}": ["prettier --write"]
+  }
+}

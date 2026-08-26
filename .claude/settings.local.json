@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/saiga/Downloads/bharatwa && ls && echo \"--- env files ---\" && ls -a | grep -i env)",
+      "Read(//c/Users/saiga/Downloads/bharatwa/**)"
+    ]
+  }
+}

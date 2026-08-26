@@ -1,0 +1,106 @@
+# Production stack for a single EC2 instance.
+#
+# Differences from the root docker-compose.yml, which is a development file:
+#   * Caddy terminates TLS and routes /api/* to the API, everything else to the
+#     web container. That is what makes the SPA able to reach the API at all -
+#     the bundle calls its own origin, and nothing else proxies that path.
+#   * Only Caddy publishes ports. Postgres, Redis and both app containers stay
+#     on the internal network and are unreachable from the internet.
+#   * Migrations run as a one-shot service that must exit 0 before the API
+#     starts, so two restarts can never race each other.
+#   * No Mailpit, no seed, no source mounts.
+#
+#   docker compose -f deploy/ec2/docker-compose.prod.yml up -d --build
+
+name: cis
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # holds the issued certificates - do not discard
+      - caddy-config:/config
+    depends_on: [api, web]
+    networks: [edge, internal]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    expose: ['80']
+    networks: [internal]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    expose: ['4000']
+    env_file: [.env]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4000/api/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Runs once per `up`, applies pending migrations, then exits.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: 'no'
+    env_file: [.env]
+    working_dir: /app/apps/api
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+networks:
+  edge:
+  internal:
+    internal: true   # no route to the internet from this network
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

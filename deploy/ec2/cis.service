@@ -1,0 +1,18 @@
+# Starts the stack on boot.
+#   sudo cp cis.service /etc/systemd/system/
+#   sudo systemctl enable --now cis
+[Unit]
+Description=CIS Technologies platform
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/cis/deploy/ec2
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

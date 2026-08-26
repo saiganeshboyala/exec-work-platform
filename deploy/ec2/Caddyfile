@@ -1,0 +1,33 @@
+# Caddy fetches and renews a Let's Encrypt certificate automatically. The only
+# requirement is that the domain below already resolves to this instance and
+# that ports 80 and 443 are open.
+#
+# Replace cis.example.com with your domain before the first start.
+
+cis.example.com {
+	encode gzip
+
+	# The API must be matched first. Everything not under /api is the SPA.
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20mb
+			roll_keep 5
+		}
+	}
+}
