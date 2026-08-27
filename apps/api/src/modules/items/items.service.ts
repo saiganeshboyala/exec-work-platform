@@ -121,6 +121,12 @@ export const itemsService = {
       ]);
     }
 
+    // Moving departments: the target has to be one this person could have put
+    // the task in themselves, or a move becomes a way to reach a hidden board.
+    if (input.boardId && input.boardId !== existing.boardId) {
+      await boardsService.getOrFail(auth, input.boardId);
+    }
+
     const { assigneeIds, ...columns } = input;
     const data: Prisma.ItemUncheckedUpdateInput = { ...columns };
     if (input.status === 'DONE' && existing.status !== 'DONE') data.completedAt = new Date();

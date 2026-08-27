@@ -28,6 +28,19 @@ export const scheduleMeetingSchema = z
   });
 export type ScheduleMeetingInput = z.infer<typeof scheduleMeetingSchema>;
 
+/** Moving a meeting. The attendees and agenda stay as they are. */
+export const rescheduleMeetingSchema = z
+  .object({
+    title: z.string().min(2).max(200).trim().optional(),
+    startsAt: z.coerce.date(),
+    endsAt: z.coerce.date(),
+  })
+  .refine((v) => v.endsAt > v.startsAt, {
+    message: 'The end time must be after the start time',
+    path: ['endsAt'],
+  });
+export type RescheduleMeetingInput = z.infer<typeof rescheduleMeetingSchema>;
+
 /** The calendar asks for a window; the list endpoint asks for nothing. */
 export const listMeetingsQuerySchema = z
   .object({

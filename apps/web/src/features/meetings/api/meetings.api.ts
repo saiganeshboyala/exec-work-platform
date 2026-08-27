@@ -2,6 +2,7 @@ import type {
   CalendarConnectionDto,
   MeetingConflictDto,
   MeetingDto,
+  RescheduleMeetingInput,
   ScheduleMeetingInput,
 } from '@ewp/contracts';
 
@@ -25,6 +26,9 @@ export const meetingsApi = {
 
   schedule: (body: ScheduleMeetingInput) =>
     apiRequest<MeetingDto>('/meetings', { method: 'POST', body }),
+
+  reschedule: (id: string, body: RescheduleMeetingInput) =>
+    apiRequest<MeetingDto>(`/meetings/${id}`, { method: 'PATCH', body }),
 
   cancel: (id: string) => apiRequest<void>(`/meetings/${id}`, { method: 'DELETE' }),
 

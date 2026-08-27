@@ -21,5 +21,14 @@ export interface CalendarEvent {
 export interface CalendarProvider {
   readonly name: string;
   createEvent(input: CalendarEventInput): Promise<CalendarEvent>;
+  /**
+   * Moves an existing event. A patch rather than a delete-and-recreate so the
+   * conferencing link people already hold keeps working.
+   */
+  updateEvent(
+    externalId: string,
+    input: Pick<CalendarEventInput, 'title' | 'startsAt' | 'endsAt'>,
+    organizerUserId?: string,
+  ): Promise<void>;
   cancelEvent(externalId: string, organizerUserId?: string): Promise<void>;
 }

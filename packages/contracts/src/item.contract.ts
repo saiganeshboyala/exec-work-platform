@@ -19,8 +19,9 @@ export const createItemSchema = z.object({
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 
 export const updateItemSchema = createItemSchema
-  .omit({ boardId: true })
   .partial()
+  // boardId is updatable: moving a task to another department is an edit like
+  // any other. The service checks the target is one the caller can reach.
   .extend({ blockedReason: z.string().max(500).trim().nullable().optional() });
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 

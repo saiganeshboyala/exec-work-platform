@@ -2,6 +2,7 @@ import {
   listMeetingsQuerySchema,
   meetingConflictQuerySchema,
   recordDecisionSchema,
+  rescheduleMeetingSchema,
   scheduleMeetingSchema,
 } from '@ewp/contracts';
 import { Router } from 'express';
@@ -40,6 +41,13 @@ meetingsRouter.post(
 );
 
 // The service checks organiser-or-manager; MEMBER here just keeps viewers out.
+meetingsRouter.patch(
+  '/:id',
+  authorize('MEMBER'),
+  validate(rescheduleMeetingSchema),
+  asyncHandler(meetingsController.reschedule),
+);
+
 meetingsRouter.delete('/:id', authorize('MEMBER'), asyncHandler(meetingsController.cancel));
 
 meetingsRouter.post(

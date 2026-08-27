@@ -18,6 +18,8 @@ import { PRIORITY_TONE, STATUS_TONE, toDateInputValue } from '@/shared/lib/item-
 import { collabApi } from '../api/collab.api';
 
 import { AssigneePicker } from './AssigneePicker';
+import { DepartmentRow } from './DepartmentRow';
+import { MeetingRow } from './MeetingRow';
 import { SelectCell } from './SelectCell';
 import { TitleCell } from './TitleCell';
 
@@ -177,6 +179,22 @@ export function ItemDrawer({
         <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5)' }}>
           {tab === 'details' ? (
             <div className="stack">
+              <Row label="Department">
+                <DepartmentRow
+                  item={item}
+                  canEdit={canEdit}
+                  onMove={(boardId) => onPatch({ boardId })}
+                />
+              </Row>
+
+              <Row label="Meeting">
+                <MeetingRow
+                  meeting={item.nextMeeting}
+                  canEdit={canEdit}
+                  onSchedule={onSchedule}
+                />
+              </Row>
+
               <Row label="Status">
                 <SelectCell<ItemStatus>
                   ariaLabel="Status"

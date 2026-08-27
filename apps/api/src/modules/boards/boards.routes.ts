@@ -14,7 +14,7 @@ boardsRouter.use(authenticate);
 boardsRouter.get(
   '/',
   authorize('VIEWER'),
-  validate(z.object({ workspaceId: z.string().uuid() }), 'query'),
+  validate(z.object({ workspaceId: z.string().uuid().optional() }), 'query'),
   asyncHandler(boardsController.list),
 );
 

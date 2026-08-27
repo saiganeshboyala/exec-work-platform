@@ -269,6 +269,37 @@ export class GoogleCalendarProvider implements CalendarProvider {
     return { externalId: event.id, joinUrl: event.hangoutLink ?? event.htmlLink ?? null };
   }
 
+  async updateEvent(
+    externalId: string,
+    input: { title: string; startsAt: Date; endsAt: Date },
+    organizerUserId?: string,
+  ): Promise<void> {
+    if (!organizerUserId) {
+      throw AppError.internal('Google Calendar needs to know whose event to move');
+    }
+
+    const token = await accessTokenFor(organizerUserId);
+    const url = new URL(`${CALENDAR_API}/calendars/primary/events/${externalId}`);
+    url.searchParams.set('sendUpdates', 'all');
+
+    // PATCH, so conferenceData is left alone and the Meet link survives.
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: input.title,
+        start: { dateTime: input.startsAt.toISOString() },
+        end: { dateTime: input.endsAt.toISOString() },
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      logger.error({ status: response.status, detail }, 'Google event update failed');
+      throw AppError.badRequest(`Google Calendar rejected the change (${response.status})`);
+    }
+  }
+
   async cancelEvent(externalId: string, organizerUserId?: string): Promise<void> {
     if (!organizerUserId) return;
 

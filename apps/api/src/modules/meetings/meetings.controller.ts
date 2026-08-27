@@ -2,6 +2,7 @@ import type {
   ListMeetingsQuery,
   MeetingConflictQuery,
   RecordDecisionInput,
+  RescheduleMeetingInput,
   ScheduleMeetingInput,
 } from '@ewp/contracts';
 import type { Request, Response } from 'express';
@@ -49,6 +50,18 @@ export const meetingsController = {
       await meetingsService.schedule(
         requireAuth(req),
         req.body as ScheduleMeetingInput,
+        req.requestId,
+      ),
+    );
+  },
+
+  async reschedule(req: Request, res: Response): Promise<void> {
+    sendOk(
+      res,
+      await meetingsService.reschedule(
+        requireAuth(req),
+        req.params.id as string,
+        req.body as RescheduleMeetingInput,
         req.requestId,
       ),
     );

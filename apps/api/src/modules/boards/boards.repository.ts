@@ -15,6 +15,19 @@ export const boardsRepository = {
     });
   },
 
+  /** Every board the caller may see, for pickers that span workspaces. */
+  listForOrganization(organizationId: string, scope: Prisma.BoardWhereInput = {}) {
+    return prisma.board.findMany({
+      where: {
+        deletedAt: null,
+        workspace: { organizationId, deletedAt: null },
+        AND: [scope],
+      },
+      include: withCounts,
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+    });
+  },
+
   /** Joins through workspace so the organization filter cannot be forgotten. */
   findById(organizationId: string, id: string, scope: Prisma.BoardWhereInput = {}) {
     return prisma.board.findFirst({

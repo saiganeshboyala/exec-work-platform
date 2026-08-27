@@ -1,5 +1,10 @@
 import { ROLE_RANK } from '@ewp/contracts';
-import type { MeetingDto, RecordDecisionInput, ScheduleMeetingInput } from '@ewp/contracts';
+import type {
+  MeetingDto,
+  RecordDecisionInput,
+  RescheduleMeetingInput,
+  ScheduleMeetingInput,
+} from '@ewp/contracts';
 
 import { AppError } from '@/common/errors';
 import { logger } from '@/common/logger';
@@ -255,6 +260,92 @@ export const meetingsService = {
    * Closes the loop: a decision taken in the room becomes a tracked item with
    * an owner and a date, so the next agenda opens with its status.
    */
+  /**
+   * Moves a meeting without disturbing who is coming or what is on the agenda.
+   * The calendar event is patched rather than replaced, so the join link people
+   * already hold keeps working.
+   */
+  async reschedule(
+    auth: AuthContext,
+    meetingId: string,
+    input: RescheduleMeetingInput,
+    requestId: string,
+  ): Promise<MeetingDto> {
+    const meeting = await prisma.meeting.findFirst({
+      where: {
+        id: meetingId,
+        workspace: { organizationId: auth.organizationId, deletedAt: null },
+      },
+      include: { attendees: { select: { userId: true } } },
+    });
+    if (!meeting) throw AppError.notFound('Meeting');
+    if (meeting.cancelledAt !== null) {
+      throw AppError.badRequest('That meeting was cancelled. Schedule a new one instead.');
+    }
+
+    // Same bar as cancelling: the organiser, or a manager over them.
+    if (meeting.createdById !== auth.userId && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+      throw AppError.forbidden('Only the organiser or a manager can move this meeting');
+    }
+
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: {
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        ...(input.title ? { title: input.title } : {}),
+      },
+    });
+
+    let calendarWarning: string | undefined;
+
+    if (meeting.calendarEventId) {
+      try {
+        await calendarProvider.updateEvent(
+          meeting.calendarEventId,
+          {
+            title: input.title ?? meeting.title,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+          },
+          meeting.createdById,
+        );
+      } catch (error) {
+        logger.error({ err: error, meetingId }, 'Calendar move failed; meeting moved here');
+        // The meeting has already moved, so this is a warning rather than a
+        // failure - but the calendar now disagrees and somebody must know.
+        calendarWarning =
+          (error instanceof Error ? error.message : 'The calendar could not be updated') +
+          ' The meeting moved here, but the calendar invite still shows the old time.';
+      }
+    }
+
+    await notificationsService.notify({
+      organizationId: auth.organizationId,
+      userIds: meeting.attendees.map((a) => a.userId).filter((id) => id !== auth.userId),
+      title: 'Meeting moved',
+      body: `${input.title ?? meeting.title} · ${input.startsAt.toLocaleString('en-GB')}`,
+      url: '/meetings',
+    });
+
+    await activityService.record({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      entityType: 'Meeting',
+      entityId: meetingId,
+      verb: 'UPDATED',
+      before: { startsAt: meeting.startsAt, endsAt: meeting.endsAt },
+      after: { startsAt: input.startsAt, endsAt: input.endsAt },
+      requestId,
+    });
+
+    const fresh = await loadMeeting(meetingId);
+    if (!fresh) throw AppError.internal();
+
+    const dto = toDto(fresh);
+    return calendarWarning ? { ...dto, calendarWarning } : dto;
+  },
+
   /**
    * Cancels a meeting rather than deleting it: the decisions taken in it and
    * the agenda it pulled together are still worth keeping, and every query

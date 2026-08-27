@@ -28,6 +28,12 @@ export const boardsService = {
     return (await boardsRepository.listForWorkspace(workspaceId, await boardFilter(auth))).map(toDto);
   },
 
+  /** Used by anything that has to offer a choice of department. */
+  async listAll(auth: AuthContext): Promise<BoardDto[]> {
+    return (await boardsRepository.listForOrganization(auth.organizationId, await boardFilter(auth)))
+      .map(toDto);
+  },
+
   async getOrFail(auth: AuthContext, id: string) {
     // Scoped here as well: a list filter alone leaves ids reachable by URL.
     const row = await boardsRepository.findById(auth.organizationId, id, await boardFilter(auth));

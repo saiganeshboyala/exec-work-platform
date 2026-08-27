@@ -8,8 +8,16 @@ import { boardsService } from './boards.service';
 
 export const boardsController = {
   async list(req: Request, res: Response): Promise<void> {
-    const workspaceId = req.query.workspaceId as string;
-    sendOk(res, await boardsService.listForWorkspace(requireAuth(req), workspaceId));
+    const auth = requireAuth(req);
+    const workspaceId = req.query.workspaceId as string | undefined;
+    // No workspace means "every department I can see", which is what a picker
+    // that has to offer a move between workspaces needs.
+    sendOk(
+      res,
+      workspaceId
+        ? await boardsService.listForWorkspace(auth, workspaceId)
+        : await boardsService.listAll(auth),
+    );
   },
 
   async get(req: Request, res: Response): Promise<void> {
