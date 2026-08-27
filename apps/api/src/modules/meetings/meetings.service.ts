@@ -17,6 +17,8 @@ import { boardsService } from '@/modules/boards';
 import { notificationsService } from '@/modules/notifications';
 import { workspacesService } from '@/modules/workspaces';
 
+import { endFor, occurrenceStarts } from './recurrence';
+
 type MeetingRow = Awaited<ReturnType<typeof loadMeeting>>;
 
 async function loadMeeting(id: string) {
@@ -247,6 +249,65 @@ export const meetingsService = {
       after: { title: meeting.title, startsAt: meeting.startsAt, agendaSize: agendaItemIds.length },
       requestId,
     });
+
+    // The repeats. Each is a meeting in its own right, sharing the attendees and
+    // agenda of the first, so one week can be moved or called off on its own.
+    if (input.repeat) {
+      const [, ...laterStarts] = occurrenceStarts(input.startsAt, input.repeat);
+
+      for (const startsAt of laterStarts) {
+        const endsAt = endFor(startsAt, input.startsAt, input.endsAt);
+
+        const repeatMeeting = await prisma.meeting.create({
+          data: {
+            workspaceId: input.workspaceId,
+            title: input.title,
+            startsAt,
+            endsAt,
+            location: input.location,
+            joinUrl: input.joinUrl ?? null,
+            createdById: auth.userId,
+            attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
+            agenda: {
+              createMany: { data: agendaItemIds.map((itemId, position) => ({ itemId, position })) },
+            },
+          },
+          include: {
+            attendees: { include: { user: { select: { id: true, email: true, fullName: true } } } },
+          },
+        });
+
+        try {
+          const event = await calendarProvider.createEvent({
+            title: input.title,
+            description: `${agendaItemIds.length} agenda items pulled from the board.`,
+            startsAt,
+            endsAt,
+            location: input.location,
+            attendeeEmails: repeatMeeting.attendees.map((a) => a.user.email),
+            organizerUserId: auth.userId,
+          });
+
+          if (event.externalId || event.joinUrl) {
+            await prisma.meeting.update({
+              where: { id: repeatMeeting.id },
+              data: {
+                calendarEventId: event.externalId || null,
+                ...(event.joinUrl ? { joinUrl: event.joinUrl } : {}),
+              },
+            });
+          }
+        } catch (error) {
+          // One failed occurrence must not lose the ones already made.
+          logger.error(
+            { err: error, meetingId: repeatMeeting.id },
+            'Calendar sync failed for a repeat; meeting kept',
+          );
+          calendarWarning ??=
+            error instanceof Error ? error.message : 'Calendar sync failed for a repeat';
+        }
+      }
+    }
 
     const fresh = await loadMeeting(meeting.id);
     if (!fresh) throw AppError.internal();

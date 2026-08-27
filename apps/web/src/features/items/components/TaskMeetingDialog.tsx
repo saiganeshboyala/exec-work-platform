@@ -1,8 +1,8 @@
-import type { ItemDto, MemberDto, WorkspaceDto } from '@ewp/contracts';
+import type { ItemDto, MemberDto, RepeatInput, WorkspaceDto } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
-import { AttendeePicker, meetingsApi } from '@/features/meetings';
+import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { ApiError } from '@/shared/api/http-client';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { WarningIcon } from '@/shared/components/icons';
@@ -55,6 +55,7 @@ export function TaskMeetingDialog({
   });
 
   const [calendarWarning, setCalendarWarning] = useState<string | null>(null);
+  const [repeat, setRepeat] = useState<RepeatInput | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -89,6 +90,7 @@ export function TaskMeetingDialog({
         attendeeIds,
         itemIds: [item.id],
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
+        ...(repeat ? { repeat } : {}),
       }),
     onSuccess: async (meeting) => {
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
@@ -237,6 +239,11 @@ export function TaskMeetingDialog({
               busyIds={busyIds}
               onToggle={toggle}
             />
+          </div>
+
+          <div className="field">
+            <span className="field__label">Repeats</span>
+            <RepeatPicker value={repeat} onChange={setRepeat} />
           </div>
 
           {conflicts.isFetching ? (

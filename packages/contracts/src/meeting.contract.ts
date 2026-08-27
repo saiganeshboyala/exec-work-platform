@@ -1,5 +1,27 @@
 import { z } from 'zod';
 
+export const REPEAT_FREQUENCIES = ['DAILY', 'WEEKDAYS', 'WEEKLY', 'CUSTOM'] as const;
+export type RepeatFrequency = (typeof REPEAT_FREQUENCIES)[number];
+
+/**
+ * A repeating meeting is stored as one meeting per occurrence rather than a
+ * rule: each can then be moved or called off on its own, which is what actually
+ * happens to a standup when one week is a holiday.
+ *
+ * The cap is deliberate. Somebody asking for a daily meeting "forever" gets a
+ * year of them, not an unbounded write.
+ */
+export const MAX_OCCURRENCES = 60;
+
+export const repeatSchema = z.object({
+  frequency: z.enum(REPEAT_FREQUENCIES),
+  /** 0 = Sunday. Only read for CUSTOM. */
+  days: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+  /** Total meetings created, the first one included. */
+  count: z.number().int().min(2).max(MAX_OCCURRENCES),
+});
+export type RepeatInput = z.infer<typeof repeatSchema>;
+
 export const scheduleMeetingSchema = z
   .object({
     workspaceId: z.string().uuid(),
@@ -21,10 +43,16 @@ export const scheduleMeetingSchema = z
      * already has one.
      */
     createTaskOnBoardId: z.string().uuid().optional(),
+    /** Absent for a one-off, which is the common case. */
+    repeat: repeatSchema.optional(),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: 'The end time must be after the start time',
     path: ['endsAt'],
+  })
+  .refine((v) => v.repeat?.frequency !== 'CUSTOM' || v.repeat.days.length > 0, {
+    message: 'Choose at least one day',
+    path: ['repeat', 'days'],
   });
 export type ScheduleMeetingInput = z.infer<typeof scheduleMeetingSchema>;
 

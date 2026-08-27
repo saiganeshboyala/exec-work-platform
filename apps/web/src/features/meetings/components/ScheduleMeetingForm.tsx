@@ -1,4 +1,4 @@
-import type { MemberDto, WorkspaceDto } from '@ewp/contracts';
+import type { MemberDto, RepeatInput, WorkspaceDto } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -10,6 +10,7 @@ import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { meetingsApi } from '../api/meetings.api';
 
 import { AttendeePicker } from './AttendeePicker';
+import { RepeatPicker } from './RepeatPicker';
 
 /** Defaults to the next whole hour, which is what people usually mean. */
 function defaultStart(): string {
@@ -41,6 +42,7 @@ export function ScheduleMeetingForm({
   const [joinUrl, setJoinUrl] = useState('');
   // A meeting raised here has no task behind it, so one is created by default.
   const [trackAsTask, setTrackAsTask] = useState(true);
+  const [repeat, setRepeat] = useState<RepeatInput | null>(null);
   const [taskBoardId, setTaskBoardId] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [calendarWarning, setCalendarWarning] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function ScheduleMeetingForm({
         itemIds: [],
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
         ...(trackAsTask && taskBoardId !== '' ? { createTaskOnBoardId: taskBoardId } : {}),
+        ...(repeat ? { repeat } : {}),
       });
     },
     onSuccess: async (meeting) => {
@@ -156,6 +159,11 @@ export function ScheduleMeetingForm({
         {fieldErrors.attendeeIds ? (
           <p className="meta" style={{ color: 'var(--blocked)' }}>{fieldErrors.attendeeIds}</p>
         ) : null}
+      </div>
+
+      <div className="field">
+        <span className="field__label">Repeats</span>
+        <RepeatPicker value={repeat} onChange={setRepeat} />
       </div>
 
       <div className="field">
