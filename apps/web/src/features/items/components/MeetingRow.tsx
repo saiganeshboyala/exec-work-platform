@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { meetingsApi } from '@/features/meetings';
+import { CopyButton } from '@/shared/components/CopyButton';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { CalendarIcon } from '@/shared/components/icons';
 import { formatDateTime } from '@/shared/lib/format';
@@ -130,6 +131,8 @@ export function MeetingRow({
         ) : (
           <span className="meta">No join link</span>
         )}
+
+        {meeting.joinUrl ? <CopyButton value={meeting.joinUrl} /> : null}
 
         {canEdit ? (
           <button

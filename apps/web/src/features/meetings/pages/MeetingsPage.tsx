@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom';
 import { boardsApi } from '@/features/boards';
 import { membersApi } from '@/features/members';
 import { queryKeys } from '@/shared/api/query-keys';
+import { CopyButton } from '@/shared/components/CopyButton';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { SegmentedControl } from '@/shared/components/SegmentedControl';
@@ -404,15 +405,18 @@ export function MeetingsPage() {
           ) : null}
 
           {selected.joinUrl ? (
-            <a
-              className="btn btn--primary"
-              href={selected.joinUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textDecoration: 'none', textAlign: 'center' }}
-            >
-              Join meeting
-            </a>
+            <div className="row" style={{ gap: 'var(--space-2)' }}>
+              <a
+                className="btn btn--primary"
+                href={selected.joinUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: 'none', textAlign: 'center', flex: 1 }}
+              >
+                Join meeting
+              </a>
+              <CopyButton value={selected.joinUrl} className="btn" />
+            </div>
           ) : (
             <p className="meta">No join link on this meeting.</p>
           )}
