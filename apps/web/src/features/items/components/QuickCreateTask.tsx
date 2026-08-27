@@ -1,11 +1,17 @@
-import { ITEM_STATUSES, PRIORITIES, type ItemStatus, type Priority } from '@ewp/contracts';
+import {
+  ITEM_STATUSES,
+  PRIORITIES,
+  type ItemStatus,
+  type Priority,
+  type RepeatInput,
+} from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '@/features/auth';
 import { boardsApi } from '@/features/boards';
-import { AttendeePicker, meetingsApi } from '@/features/meetings';
+import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { membersApi } from '@/features/members';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
@@ -51,6 +57,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [newDepartment, setNewDepartment] = useState('');
   const [newWorkspace, setNewWorkspace] = useState('');
+  const [meetingRepeat, setMeetingRepeat] = useState<RepeatInput | null>(null);
   const [addingDepartment, setAddingDepartment] = useState(false);
 
   useEffect(() => {
@@ -130,6 +137,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
             endsAt: new Date(start.getTime() + meetingMinutes * 60_000),
             attendeeIds: attendeeIds.length > 0 ? attendeeIds : [currentUserId],
             itemIds: [item.id],
+            ...(meetingRepeat ? { repeat: meetingRepeat } : {}),
           });
         } catch (error) {
           // The task exists and is the thing that was asked for; a failed
@@ -441,6 +449,12 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
                     onChange={(event) => setMeetingMinutes(Number(event.target.value))}
                     style={{ width: 90 }}
                   />
+                </div>
+              ) : null}
+
+              {withMeeting ? (
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <RepeatPicker value={meetingRepeat} onChange={setMeetingRepeat} />
                 </div>
               ) : null}
 
