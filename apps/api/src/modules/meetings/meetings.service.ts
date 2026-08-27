@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { ROLE_RANK } from '@ewp/contracts';
 import type {
   MeetingDto,
@@ -45,6 +47,7 @@ function toDto(row: NonNullable<MeetingRow>): MeetingDto {
     attendees: row.attendees.map((a) => ({ id: a.user.id, fullName: a.user.fullName })),
     agendaItemIds: row.agenda.map((a) => a.itemId),
     decisionCount: row._count.decisions,
+    seriesId: row.seriesId,
   };
 }
 
@@ -183,6 +186,9 @@ export const meetingsService = {
 
     const agendaItemIds = [...new Set([...chosenIds, ...attention.map((i) => i.id)])];
 
+    // One id shared by the whole series, so all of it can be called off at once.
+    const seriesId = input.repeat ? randomUUID() : null;
+
     const meeting = await prisma.meeting.create({
       data: {
         workspaceId: input.workspaceId,
@@ -192,6 +198,7 @@ export const meetingsService = {
         location: input.location,
         joinUrl: input.joinUrl ?? null,
         createdById: auth.userId,
+        seriesId,
         attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
         agenda: {
           createMany: {
@@ -278,6 +285,7 @@ export const meetingsService = {
             location: input.location,
             joinUrl: input.joinUrl ?? null,
             createdById: auth.userId,
+            seriesId,
             attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
             agenda: {
               createMany: {
@@ -422,6 +430,50 @@ export const meetingsService = {
 
     const dto = toDto(fresh);
     return calendarWarning ? { ...dto, calendarWarning } : dto;
+  },
+
+  /**
+   * Calls off every remaining occurrence of a repeating meeting. Past ones are
+   * left alone - they happened, and cancelling history helps nobody.
+   */
+  async cancelSeries(auth: AuthContext, meetingId: string, requestId: string) {
+    const meeting = await prisma.meeting.findFirst({
+      where: {
+        id: meetingId,
+        workspace: { organizationId: auth.organizationId, deletedAt: null },
+      },
+      select: { seriesId: true },
+    });
+    if (!meeting) throw AppError.notFound('Meeting');
+
+    // A one-off has no siblings; cancelling "the series" is cancelling it.
+    if (!meeting.seriesId) {
+      await this.cancel(auth, meetingId, requestId);
+      return { cancelled: 1 };
+    }
+
+    const siblings = await prisma.meeting.findMany({
+      where: {
+        seriesId: meeting.seriesId,
+        cancelledAt: null,
+        startsAt: { gte: new Date() },
+        workspace: { organizationId: auth.organizationId, deletedAt: null },
+      },
+      select: { id: true },
+      orderBy: { startsAt: 'asc' },
+    });
+
+    let cancelled = 0;
+    for (const sibling of siblings) {
+      // One occurrence somebody cannot touch must not stop the rest.
+      await this.cancel(auth, sibling.id, requestId)
+        .then(() => {
+          cancelled += 1;
+        })
+        .catch(() => undefined);
+    }
+
+    return { cancelled };
   },
 
   /**

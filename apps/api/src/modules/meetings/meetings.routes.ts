@@ -50,6 +50,13 @@ meetingsRouter.patch(
 
 meetingsRouter.delete('/:id', authorize('MEMBER'), asyncHandler(meetingsController.cancel));
 
+// Declared after the single delete so the literal path is not read as an id.
+meetingsRouter.delete(
+  '/:id/series',
+  authorize('MEMBER'),
+  asyncHandler(meetingsController.cancelSeries),
+);
+
 meetingsRouter.post(
   '/:id/decisions',
   authorize('MANAGER'),

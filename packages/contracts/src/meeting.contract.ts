@@ -133,6 +133,8 @@ export interface MeetingDto {
   attendees: Array<{ id: string; fullName: string }>;
   agendaItemIds: string[];
   decisionCount: number;
+  /** Shared by every occurrence of a repeat; null for a one-off. */
+  seriesId: string | null;
   /**
    * Why this meeting has no join link, when the calendar was meant to make one.
    * Only set on the response that created the meeting - a sync failure does not

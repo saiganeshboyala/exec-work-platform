@@ -68,6 +68,13 @@ export const meetingsController = {
     );
   },
 
+  async cancelSeries(req: Request, res: Response): Promise<void> {
+    sendOk(
+      res,
+      await meetingsService.cancelSeries(requireAuth(req), req.params.id as string, req.requestId),
+    );
+  },
+
   async cancel(req: Request, res: Response): Promise<void> {
     await meetingsService.cancel(requireAuth(req), req.params.id as string, req.requestId);
     sendNoContent(res);

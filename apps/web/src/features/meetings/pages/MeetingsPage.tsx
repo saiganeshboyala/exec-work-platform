@@ -138,6 +138,17 @@ export function MeetingsPage() {
     },
   });
 
+  const cancelSeries = useMutation({
+    mutationFn: (id: string) => meetingsApi.cancelSeries(id),
+    onSuccess: async () => {
+      setConfirmingCancel(false);
+      setSelected(null);
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
   const edit = useMutation({
     mutationFn: (id: string) => {
       const start = new Date(editStartsAt);
@@ -475,17 +486,37 @@ export function MeetingsPage() {
               <p style={{ fontSize: 'var(--text-md)' }}>
                 Everyone invited is told, and it is removed from the calendar. Any decisions
                 already recorded against it are kept.
+                {selected.seriesId
+                  ? ' This meeting repeats: cancelling every other day leaves the ones that have already happened alone.'
+                  : ''}
               </p>
-              <div className="row" style={{ gap: 'var(--space-2)' }}>
+              <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <button
                   className="btn btn--sm"
                   type="button"
-                  disabled={cancelMeeting.isPending}
+                  disabled={cancelMeeting.isPending || cancelSeries.isPending}
                   style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
                   onClick={() => cancelMeeting.mutate(selected.id)}
                 >
-                  {cancelMeeting.isPending ? 'Cancelling…' : 'Yes, cancel it'}
+                  {cancelMeeting.isPending
+                    ? 'Cancelling…'
+                    : selected.seriesId
+                      ? 'Just this one'
+                      : 'Yes, cancel it'}
                 </button>
+
+                {/* Only a repeat has other days to call off. */}
+                {selected.seriesId ? (
+                  <button
+                    className="btn btn--sm"
+                    type="button"
+                    disabled={cancelMeeting.isPending || cancelSeries.isPending}
+                    style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
+                    onClick={() => cancelSeries.mutate(selected.id)}
+                  >
+                    {cancelSeries.isPending ? 'Cancelling…' : 'This and every other day'}
+                  </button>
+                ) : null}
                 <button
                   className="btn btn--ghost btn--sm"
                   type="button"
@@ -495,6 +526,7 @@ export function MeetingsPage() {
                 </button>
               </div>
               {cancelMeeting.error ? <ErrorNotice error={cancelMeeting.error} /> : null}
+              {cancelSeries.error ? <ErrorNotice error={cancelSeries.error} /> : null}
             </div>
           ) : null}
 

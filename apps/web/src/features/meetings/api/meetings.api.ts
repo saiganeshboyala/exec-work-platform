@@ -44,6 +44,10 @@ export const meetingsApi = {
 
   cancel: (id: string) => apiRequest<void>(`/meetings/${id}`, { method: 'DELETE' }),
 
+  /** Calls off every remaining occurrence of a repeat. */
+  cancelSeries: (id: string) =>
+    apiRequest<{ cancelled: number }>(`/meetings/${id}/series`, { method: 'DELETE' }),
+
   calendarStatus: () => apiRequest<CalendarConnectionDto>('/integrations/google/status'),
 
   authorizeUrl: () => apiRequest<{ url: string }>('/integrations/google/authorize'),

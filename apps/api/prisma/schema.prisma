@@ -274,6 +274,9 @@ model Meeting {
   /// otherwise whatever conferencing link the organiser supplied.
   joinUrl         String?   @db.VarChar(1000)
   createdById     String    @db.Uuid
+  /// Shared by every occurrence of a repeating meeting, so the series can be
+  /// moved or called off as one. Null for a one-off.
+  seriesId        String?   @db.Uuid
   cancelledAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
