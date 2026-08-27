@@ -1,7 +1,11 @@
 import type { LoginInput, SessionUserDto } from '@ewp/contracts';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { setAccessToken, setUnauthenticatedHandler } from '@/shared/api/http-client';
+import {
+  setAccessToken,
+  setSessionRefresher,
+  setUnauthenticatedHandler,
+} from '@/shared/api/http-client';
 
 import { authApi } from '../api/auth.api';
 
@@ -32,8 +36,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus('anonymous');
   }, []);
 
+  // Trades the stored refresh token for a new access token. The http client
+  // calls this when a request comes back 401, so an expired access token is
+  // renewed under the request rather than ending the session.
+  const renew = useCallback(async (): Promise<string | null> => {
+    const stored = localStorage.getItem(REFRESH_KEY);
+    if (!stored) return null;
+
+    try {
+      const tokens = await authApi.refresh(stored);
+      localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+      setAccessToken(tokens.accessToken);
+      return tokens.accessToken;
+    } catch {
+      // The refresh token is spent or revoked; this session really is over.
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     setUnauthenticatedHandler(clearSession);
+    setSessionRefresher(renew);
 
     const stored = localStorage.getItem(REFRESH_KEY);
     if (!stored) {
@@ -52,7 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearSession();
       }
     })();
-  }, [clearSession]);
+
+    return () => setSessionRefresher(null);
+  }, [clearSession, renew]);
 
   const signIn = useCallback(async (input: LoginInput) => {
     const { user: signedIn, tokens } = await authApi.login(input);
