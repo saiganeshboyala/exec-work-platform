@@ -183,7 +183,7 @@ export function TodoTaskTable({
                 className="btn btn--ghost btn--sm"
                 style={{ height: 26, padding: '0 8px', color: 'var(--accent)' }}
               >
-                Edit
+                Details
               </button>
 
               {canEdit ? (
