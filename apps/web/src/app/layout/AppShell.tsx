@@ -22,8 +22,11 @@ const NAV_GROUPS = [
   {
     label: 'Work',
     items: [
-      { to: '/boards', label: 'Departments', icon: '▦', end: false },
-      { to: '/people', label: 'People', icon: '◍', end: false },
+      // Both of these are management views: the department list is how you see
+      // across the organisation, and the directory is who reports where. Members
+      // work from Todo, which already shows every task they are on.
+      { to: '/boards', label: 'Departments', icon: '▦', end: false, minRole: 'MANAGER' as Role },
+      { to: '/people', label: 'People', icon: '◍', end: false, minRole: 'MANAGER' as Role },
       // Administration is for ADMIN and OWNER; managers run the work, not the tenant.
       { to: '/admin', label: 'Admin', icon: '⚙', end: false, minRole: 'ADMIN' as Role },
     ],
@@ -170,7 +173,16 @@ export function AppShell() {
           aria-label="Main"
           style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
         >
-          {NAV_GROUPS.map((group) => (
+          {NAV_GROUPS.map((group) => ({
+            ...group,
+            items: group.items.filter(
+              (entry) => !('minRole' in entry) || rank >= ROLE_RANK[entry.minRole as Role],
+            ),
+          }))
+            // A member sees nothing under "Work", and a heading over an empty
+            // space looks like the page failed to load.
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
             <div key={group.label}>
               {/* The group heading is meaningless once labels are hidden. */}
               {!collapsed ? (
@@ -190,9 +202,7 @@ export function AppShell() {
               ) : null}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {group.items
-                  .filter((entry) => !entry.minRole || rank >= ROLE_RANK[entry.minRole])
-                  .map((entry) => (
+                {group.items.map((entry) => (
                     <NavLink
                       key={entry.to}
                       to={entry.to}

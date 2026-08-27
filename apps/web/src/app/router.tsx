@@ -25,10 +25,26 @@ export function AppRouter() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route path="boards" element={<BoardsPage />} />
+        <Route
+          path="boards"
+          element={
+            <RequireRole minRole="MANAGER">
+              <BoardsPage />
+            </RequireRole>
+          }
+        />
+        {/* Deliberately open: Todo links straight here for task details, and the
+            API already limits a member to the departments they are actually on. */}
         <Route path="boards/:boardId" element={<BoardPage />} />
         <Route path="meetings" element={<MeetingsPage />} />
-        <Route path="people" element={<MembersPage />} />
+        <Route
+          path="people"
+          element={
+            <RequireRole minRole="MANAGER">
+              <MembersPage />
+            </RequireRole>
+          }
+        />
         <Route
           path="admin"
           element={

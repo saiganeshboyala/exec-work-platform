@@ -74,6 +74,8 @@ export function BoardPage() {
   const canEdit = user ? ROLE_RANK[user.role] >= ROLE_RANK.MEMBER : false;
   // Deleting a board takes its tasks with it, so it needs a higher bar than editing.
   const canDeleteBoard = user ? ROLE_RANK[user.role] >= ROLE_RANK.MANAGER : false;
+  // Matches the nav and route gate on the department list.
+  const canSeeAllBoards = user ? ROLE_RANK[user.role] >= ROLE_RANK.MANAGER : false;
 
   const deleteBoard = useMutation({
     mutationFn: () => boardsApi.remove(boardId),
@@ -126,9 +128,17 @@ export function BoardPage() {
     <div className="stack" style={{ gap: 'var(--space-4)' }}>
       <PageHeader
         breadcrumb={
-          <Link to="/boards" className="meta" style={{ textDecoration: 'none' }}>
-            ← All departments
-          </Link>
+          // Members have no department list to go back to, so send them to the
+          // page they came from rather than one that would bounce them.
+          canSeeAllBoards ? (
+            <Link to="/boards" className="meta" style={{ textDecoration: 'none' }}>
+              ← All departments
+            </Link>
+          ) : (
+            <Link to="/" className="meta" style={{ textDecoration: 'none' }}>
+              ← Todo
+            </Link>
+          )
         }
         title={board.data?.name ?? 'Department'}
         subtitle={
