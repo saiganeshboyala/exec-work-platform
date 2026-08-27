@@ -9,6 +9,8 @@ import { ErrorNotice } from '@/shared/components/ErrorNotice';
 
 import { meetingsApi } from '../api/meetings.api';
 
+import { AttendeePicker } from './AttendeePicker';
+
 /** Defaults to the next whole hour, which is what people usually mean. */
 function defaultStart(): string {
   const start = new Date();
@@ -73,6 +75,9 @@ export function ScheduleMeetingForm({
       // leaving a linkless meeting to be discovered later.
       setCalendarWarning(meeting.calendarWarning ?? null);
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      // A meeting shows on its task's row in Todo, and in the KPI strip.
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onScheduled();
     },
     onError: (error) => setFieldErrors(error instanceof ApiError ? error.fieldErrors : {}),
@@ -147,30 +152,7 @@ export function ScheduleMeetingForm({
 
       <div className="field">
         <span className="field__label">Attendees</span>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-          {members.map((member) => (
-            <label
-              key={member.userId}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 13,
-                padding: '4px 8px',
-                borderRadius: 999,
-                border: '1px solid var(--line)',
-                background: attendeeIds.includes(member.userId) ? 'var(--accent-wash)' : 'transparent',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={attendeeIds.includes(member.userId)}
-                onChange={() => toggle(member.userId)}
-              />
-              {member.fullName}
-            </label>
-          ))}
-        </div>
+        <AttendeePicker members={members} selected={attendeeIds} onToggle={toggle} />
         {fieldErrors.attendeeIds ? (
           <p className="meta" style={{ color: 'var(--blocked)' }}>{fieldErrors.attendeeIds}</p>
         ) : null}

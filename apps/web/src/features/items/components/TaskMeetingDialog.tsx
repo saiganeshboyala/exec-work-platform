@@ -2,9 +2,8 @@ import type { ItemDto, MemberDto, WorkspaceDto } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
-import { meetingsApi } from '@/features/meetings';
+import { AttendeePicker, meetingsApi } from '@/features/meetings';
 import { ApiError } from '@/shared/api/http-client';
-import { Avatar } from '@/shared/components/Avatar';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { WarningIcon } from '@/shared/components/icons';
 import { formatDateTime } from '@/shared/lib/format';
@@ -112,6 +111,11 @@ export function TaskMeetingDialog({
     );
 
   const clashes = conflicts.data ?? [];
+
+  // Everyone the conflict check says is already booked in this window.
+  const busyIds = new Set(
+    clashes.flatMap((clash) => clash.clashingAttendees.map((person) => person.id)),
+  );
 
   return (
     <>
@@ -227,37 +231,12 @@ export function TaskMeetingDialog({
 
           <div className="field">
             <span className="field__label">Attendees</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {members.map((member) => {
-                const on = attendeeIds.includes(member.userId);
-                const busy = clashes.some((clash) =>
-                  clash.clashingAttendees.some((person) => person.id === member.userId),
-                );
-
-                return (
-                  <button
-                    key={member.userId}
-                    type="button"
-                    className="chip"
-                    aria-pressed={on}
-                    onClick={() => toggle(member.userId)}
-                    style={
-                      busy && on
-                        ? { borderColor: 'var(--at-risk)', color: 'var(--at-risk)', background: 'var(--at-risk-wash)' }
-                        : undefined
-                    }
-                  >
-                    <Avatar id={member.userId} fullName={member.fullName} size={18} />
-                    {member.fullName}
-                    {busy && on ? (
-                      <span aria-label="has a clash" style={{ display: 'inline-flex' }}>
-                        <WarningIcon size={12} />
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
+            <AttendeePicker
+              members={members}
+              selected={attendeeIds}
+              busyIds={busyIds}
+              onToggle={toggle}
+            />
           </div>
 
           {conflicts.isFetching ? (

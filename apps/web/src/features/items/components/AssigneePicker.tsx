@@ -29,6 +29,7 @@ export function AssigneePicker({
   onChange: (userIds: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -72,6 +73,18 @@ export function AssigneePicker({
   }, [open]);
 
   const selected = new Set(assignees.map((person) => person.id));
+
+  // Search covers the name and the address, since colleagues are often known
+  // by one or the other.
+  const term = search.trim().toLowerCase();
+  const matches =
+    term === ''
+      ? members
+      : members.filter(
+          (member) =>
+            member.fullName.toLowerCase().includes(term) ||
+            member.email.toLowerCase().includes(term),
+        );
 
   const toggle = (userId: string): void => {
     const next = new Set(selected);
@@ -143,7 +156,8 @@ export function AssigneePicker({
                 left: position.left,
                 width: PANEL_WIDTH,
                 maxHeight: PANEL_MAX_HEIGHT,
-                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
                 background: 'var(--surface)',
                 border: '1px solid var(--line)',
                 borderRadius: 'var(--radius-lg)',
@@ -152,7 +166,25 @@ export function AssigneePicker({
                 padding: 4,
               }}
             >
-              {members.map((member) => {
+              <input
+                className="field__input"
+                type="search"
+                autoFocus
+                placeholder="Search people…"
+                aria-label="Search people"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                style={{ height: 30, marginBottom: 4, flexShrink: 0 }}
+              />
+
+              <div style={{ overflowY: 'auto', minHeight: 0 }}>
+              {matches.length === 0 ? (
+                <p className="meta" style={{ padding: '6px 8px' }}>
+                  Nobody matches that.
+                </p>
+              ) : null}
+
+              {matches.map((member) => {
                 const isOwner = member.userId === ownerId;
 
                 return (
@@ -167,6 +199,12 @@ export function AssigneePicker({
                       fontSize: 'var(--text-base)',
                       cursor: isOwner ? 'default' : 'pointer',
                       opacity: isOwner ? 0.55 : 1,
+                      // Green for chosen, matching the attendee chips.
+                      background:
+                        isOwner || selected.has(member.userId) ? 'var(--on-track-wash)' : undefined,
+                      color:
+                        !isOwner && selected.has(member.userId) ? 'var(--on-track)' : undefined,
+                      fontWeight: !isOwner && selected.has(member.userId) ? 600 : undefined,
                     }}
                   >
                     <input
@@ -185,6 +223,7 @@ export function AssigneePicker({
                   </label>
                 );
               })}
+              </div>
             </div>,
             document.body,
           )
