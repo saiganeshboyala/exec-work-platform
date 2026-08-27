@@ -3,13 +3,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { useAuth } from '@/features/auth';
 import { boardsApi } from '@/features/boards';
+import { AttendeePicker, meetingsApi } from '@/features/meetings';
 import { membersApi } from '@/features/members';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PRIORITY_TONE, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import { itemsApi } from '../api/items.api';
+
+/** Next whole hour, in the format datetime-local expects. */
+function nextHour(): string {
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  start.setHours(start.getHours() + 1);
+  return new Date(start.getTime() - start.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
 
 /**
  * Creates a task from anywhere, without first navigating to the right board.
@@ -19,6 +29,10 @@ import { itemsApi } from '../api/items.api';
 export function QuickCreateTask({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // A meeting needs at least one attendee, and whoever is creating the task is
+  // the sensible fallback when nobody has been picked.
+  const currentUserId = user?.id ?? '';
 
   const [workspaceId, setWorkspaceId] = useState('');
   const [boardId, setBoardId] = useState('');
@@ -28,6 +42,13 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
   const [ownerId, setOwnerId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [openAfter, setOpenAfter] = useState(false);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  // A task often exists because a meeting is needed about it, so offer both in
+  // one go rather than making people create the task and come back.
+  const [withMeeting, setWithMeeting] = useState(false);
+  const [meetingAt, setMeetingAt] = useState('');
+  const [meetingMinutes, setMeetingMinutes] = useState(30);
+  const [meetingError, setMeetingError] = useState<string | null>(null);
   const [newDepartment, setNewDepartment] = useState('');
   const [addingDepartment, setAddingDepartment] = useState(false);
 
@@ -81,9 +102,38 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
         priority,
         ...(ownerId !== '' ? { ownerId } : {}),
         ...(dueDate !== '' ? { dueDate: new Date(dueDate) } : {}),
+        ...(assigneeIds.length > 0 ? { assigneeIds } : {}),
       }),
     onSuccess: async (item) => {
+      // Booked against the task that was just made, so it lands on the agenda
+      // and shows on the task's row straight away.
+      if (withMeeting && meetingAt !== '' && workspaceId !== '') {
+        const start = new Date(meetingAt);
+        const attendeeIds = [...new Set([ownerId, ...assigneeIds].filter((id) => id !== ''))];
+
+        try {
+          await meetingsApi.schedule({
+            workspaceId,
+            title: `Review: ${title.trim()}`.slice(0, 200),
+            startsAt: start,
+            endsAt: new Date(start.getTime() + meetingMinutes * 60_000),
+            attendeeIds: attendeeIds.length > 0 ? attendeeIds : [currentUserId],
+            itemIds: [item.id],
+          });
+        } catch (error) {
+          // The task exists and is the thing that was asked for; a failed
+          // meeting must not throw that away without saying so.
+          setMeetingError(error instanceof Error ? error.message : 'The meeting could not be booked');
+          await queryClient.invalidateQueries({ queryKey: queryKeys.boardItems(boardId) });
+          await queryClient.invalidateQueries({ queryKey: ['items'] });
+          await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          return;
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: queryKeys.boardItems(boardId) });
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
 
       if (openAfter) navigate(`/boards/${boardId}?item=${item.id}`);
@@ -212,7 +262,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
                       style={{ flex: 1, minWidth: 0 }}
                     >
                       {(boards.data?.length ?? 0) === 0 ? (
-                        <option value="">No departments yet</option>
+                        <option value="">No department available</option>
                       ) : null}
                       {boards.data?.map((board) => (
                         <option key={board.id} value={board.id}>{board.name}</option>
@@ -229,6 +279,12 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
                     </button>
                   </span>
                 )}
+
+                {!boards.isPending && (boards.data?.length ?? 0) === 0 ? (
+                  <p className="meta" style={{ marginTop: 6 }}>
+                    No departments yet — make the first one with +.
+                  </p>
+                ) : null}
 
                 {createDepartment.error ? <ErrorNotice error={createDepartment.error} /> : null}
               </div>
@@ -290,6 +346,67 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="field">
+              <span className="field__label">Members</span>
+              <AttendeePicker
+                members={(members.data ?? []).filter((m) => m.userId !== ownerId)}
+                selected={assigneeIds}
+                onToggle={(userId) =>
+                  setAssigneeIds((current) =>
+                    current.includes(userId)
+                      ? current.filter((id) => id !== userId)
+                      : [...current, userId],
+                  )
+                }
+              />
+            </div>
+
+            <div className="field">
+              <label className="row" style={{ gap: 6, fontSize: 'var(--text-md)' }}>
+                <input
+                  type="checkbox"
+                  checked={withMeeting}
+                  onChange={(event) => {
+                    setWithMeeting(event.target.checked);
+                    if (event.target.checked && meetingAt === '') setMeetingAt(nextHour());
+                  }}
+                />
+                Also schedule a meeting about this task
+              </label>
+
+              {withMeeting ? (
+                <div
+                  className="row"
+                  style={{ gap: 'var(--space-2)', marginTop: 'var(--space-2)', flexWrap: 'wrap' }}
+                >
+                  <input
+                    className="field__input"
+                    type="datetime-local"
+                    aria-label="Meeting time"
+                    value={meetingAt}
+                    onChange={(event) => setMeetingAt(event.target.value)}
+                    style={{ flex: 1, minWidth: 180 }}
+                  />
+                  <input
+                    className="field__input"
+                    type="number"
+                    min={5}
+                    step={5}
+                    aria-label="Meeting minutes"
+                    value={meetingMinutes}
+                    onChange={(event) => setMeetingMinutes(Number(event.target.value))}
+                    style={{ width: 90 }}
+                  />
+                </div>
+              ) : null}
+
+              {meetingError ? (
+                <p className="meta" style={{ color: 'var(--at-risk)', marginTop: 6 }}>
+                  The task was created. {meetingError}
+                </p>
+              ) : null}
             </div>
 
             <label className="row" style={{ gap: 6, fontSize: 'var(--text-base)' }}>
