@@ -10,6 +10,9 @@ import type {
 import { apiRequest } from '@/shared/api/http-client';
 
 export const membersApi = {
+  setJobTitle: (userId: string, jobTitle: string | null) =>
+    apiRequest<MemberDto>(`/members/${userId}/job-title`, { method: 'PATCH', body: { jobTitle } }),
+
   listPending: () => apiRequest<PendingMemberDto[]>('/members/pending'),
   approve: (userId: string, body: ApproveMemberInput) =>
     apiRequest<MemberDto>(`/members/pending/${userId}/approve`, { method: 'POST', body }),

@@ -1,6 +1,7 @@
 import type {
   AcceptInvitationInput,
   ApproveMemberInput,
+  ChangeJobTitleInput,
   ChangeRoleInput,
   InviteMemberInput,
 } from '@ewp/contracts';
@@ -56,6 +57,18 @@ export const membersController = {
   /** Public: the recipient has no session yet, the token is the credential. */
   async acceptInvitation(req: Request, res: Response): Promise<void> {
     sendOk(res, await membersService.acceptInvitation(req.body as AcceptInvitationInput));
+  },
+
+  async changeJobTitle(req: Request, res: Response): Promise<void> {
+    sendOk(
+      res,
+      await membersService.changeJobTitle(
+        requireAuth(req),
+        req.params.userId as string,
+        req.body as ChangeJobTitleInput,
+        req.requestId,
+      ),
+    );
   },
 
   async changeRole(req: Request, res: Response): Promise<void> {

@@ -36,6 +36,12 @@ export interface PendingMemberDto {
 }
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
 
+/** Job titles are collected at sign-up; this is how they get corrected later. */
+export const changeJobTitleSchema = z.object({
+  jobTitle: z.string().max(120).trim().nullable(),
+});
+export type ChangeJobTitleInput = z.infer<typeof changeJobTitleSchema>;
+
 export interface MemberDto {
   userId: string;
   email: string;

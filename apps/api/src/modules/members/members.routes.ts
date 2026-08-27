@@ -1,6 +1,7 @@
 import {
   acceptInvitationSchema,
   approveMemberSchema,
+  changeJobTitleSchema,
   changeRoleSchema,
   inviteMemberSchema,
 } from '@ewp/contracts';
@@ -57,6 +58,13 @@ membersRouter.delete(
   '/invitations/:id',
   authorize('MANAGER'),
   asyncHandler(membersController.revokeInvitation),
+);
+
+membersRouter.patch(
+  '/:userId/job-title',
+  authorize('MANAGER'),
+  validate(changeJobTitleSchema),
+  asyncHandler(membersController.changeJobTitle),
 );
 
 membersRouter.patch(

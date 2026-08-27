@@ -41,6 +41,12 @@ export function MembersPage() {
     onSuccess: refreshMembers,
   });
 
+  const setJobTitle = useMutation({
+    mutationFn: ({ userId, jobTitle }: { userId: string; jobTitle: string | null }) =>
+      membersApi.setJobTitle(userId, jobTitle),
+    onSuccess: refreshMembers,
+  });
+
   const remove = useMutation({
     mutationFn: (userId: string) => membersApi.remove(userId),
     onSuccess: async () => {
@@ -111,6 +117,38 @@ export function MembersPage() {
                     </span>
                     <span className="meta">{member.email}</span>
                   </span>
+
+                  {/* Collected at sign-up and never shown until now. Editable
+                      here because a title typed once was otherwise permanent. */}
+                  {canManageRoles ? (
+                    <input
+                      className="field__input"
+                      aria-label={`Job title for ${member.fullName}`}
+                      placeholder="Job title"
+                      defaultValue={member.jobTitle ?? ''}
+                      disabled={busy}
+                      style={{ height: 30, fontSize: 'var(--text-base)', width: 170 }}
+                      onBlur={(event) => {
+                        const next = event.target.value.trim();
+                        if (next === (member.jobTitle ?? '')) return;
+                        setJobTitle.mutate({
+                          userId: member.userId,
+                          jobTitle: next === '' ? null : next,
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') event.currentTarget.blur();
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="meta"
+                      style={{ width: 170, fontSize: 'var(--text-base)' }}
+                      title={member.jobTitle ?? undefined}
+                    >
+                      {member.jobTitle ?? '—'}
+                    </span>
+                  )}
 
                   <span className="meta" style={{ whiteSpace: 'nowrap' }}>
                     joined {formatDate(member.joinedAt)}

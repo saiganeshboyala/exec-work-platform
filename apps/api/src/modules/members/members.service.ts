@@ -4,6 +4,7 @@ import {
   ROLE_RANK,
   type AcceptInvitationInput,
   type ApproveMemberInput,
+  type ChangeJobTitleInput,
   type ChangeRoleInput,
   type InvitationDto,
   type InviteMemberInput,
@@ -256,6 +257,35 @@ export const membersService = {
 
       return { userId: user.id, organizationId: invitation.organizationId, role: invitation.role };
     });
+  },
+
+  async changeJobTitle(
+    auth: AuthContext,
+    userId: string,
+    input: ChangeJobTitleInput,
+    requestId: string,
+  ): Promise<MemberDto> {
+    const existing = await membersRepository.findMembership(auth.organizationId, userId);
+    if (!existing) throw AppError.notFound('Member');
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { jobTitle: input.jobTitle === '' ? null : input.jobTitle },
+    });
+
+    await activityService.record({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      entityType: 'User',
+      entityId: userId,
+      verb: 'UPDATED',
+      after: { jobTitle: input.jobTitle },
+      requestId,
+    });
+
+    const fresh = await membersRepository.findMembership(auth.organizationId, userId);
+    if (!fresh) throw AppError.notFound('Member');
+    return toMemberDto(fresh);
   },
 
   async changeRole(
