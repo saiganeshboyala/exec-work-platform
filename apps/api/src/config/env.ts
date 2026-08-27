@@ -18,7 +18,9 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'Use at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'Use at least 32 characters'),
   JWT_ACCESS_TTL: z.string().default('15m'),
-  JWT_REFRESH_TTL: z.string().default('30d'),
+  // A day. Long enough to work through without re-typing a password,
+  // short enough that a laptop left open is not a standing invitation.
+  JWT_REFRESH_TTL: z.string().default('24h'),
   INVITATION_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(14),
 
   EMAIL_DRIVER: z.enum(['console', 'smtp']).default('console'),
