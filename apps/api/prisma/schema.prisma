@@ -103,6 +103,7 @@ model User {
 
   memberships       Membership[]
   ownedItems        Item[]              @relation("ItemOwner")
+  authoredItems     Item[]              @relation("ItemAuthor")
   refreshTokens     RefreshToken[]
   activities        Activity[]
   attendances       MeetingAttendee[]
@@ -229,6 +230,9 @@ model Item {
   status         ItemStatus @default(NOT_STARTED)
   priority       Priority   @default(MEDIUM)
   ownerId        String?    @db.Uuid
+  /// Who raised it. Kept so the author can still find a task they created and
+  /// then handed to somebody else.
+  createdById    String?    @db.Uuid
   startDate      DateTime?
   dueDate        DateTime?
   blockedReason  String?    @db.VarChar(500)
@@ -242,6 +246,7 @@ model Item {
   parent    Item?             @relation("ItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   subitems  Item[]            @relation("ItemHierarchy")
   owner     User?             @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy User?             @relation("ItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
   agendaFor MeetingAgendaItem[]
   decisions Decision[]
   comments    Comment[]

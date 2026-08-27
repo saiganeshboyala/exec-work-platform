@@ -2,7 +2,8 @@ import type { BoardDto, CreateBoardInput, UpdateBoardInput } from '@ewp/contract
 
 import { AppError } from '@/common/errors';
 import type { AuthContext } from '@/common/types/express';
-import { boardFilter } from '@/modules/access';
+import { prisma } from '@/database';
+import { boardFilter, seesWholeOrganization } from '@/modules/access';
 import { activityService } from '@/modules/activity';
 import { workspacesService } from '@/modules/workspaces';
 
@@ -48,6 +49,19 @@ export const boardsService = {
   async create(auth: AuthContext, input: CreateBoardInput, requestId: string): Promise<BoardDto> {
     await workspacesService.getOrFail(auth, input.workspaceId);
     const row = await boardsRepository.create(input);
+
+    // Whoever made it can see it. Without this a member creates a department
+    // and it vanishes, because visibility is granted rather than implied.
+    if (!seesWholeOrganization(auth)) {
+      await prisma.scopedAccess.create({
+        data: {
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          boardId: row.id,
+          role: auth.role,
+        },
+      });
+    }
 
     await activityService.record({
       organizationId: auth.organizationId,

@@ -83,6 +83,9 @@ export const itemsService = {
       dueDate: input.dueDate ?? null,
       ownerId: input.ownerId ?? null,
       parentId: input.parentId ?? null,
+      // Kept so somebody who raises a task and assigns it elsewhere can still
+      // find it. Restricted roles are filtered on exactly this.
+      createdById: auth.userId,
     });
 
     const row =

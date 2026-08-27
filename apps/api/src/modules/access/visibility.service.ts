@@ -22,7 +22,8 @@ export function seesWholeOrganization(auth: AuthContext): boolean {
 /**
  * The boards a restricted user may see: explicitly granted, inside a granted
  * workspace, or holding work that is theirs. The last clause matters - being
- * given a task is itself a reason to see the board it lives on.
+ * given a task, or having raised one, is itself a reason to see the department
+ * it lives in. Creating a department also grants it, so its author keeps it.
  */
 export async function visibleBoardIds(auth: AuthContext): Promise<string[]> {
   const grants = await prisma.scopedAccess.findMany({
@@ -46,7 +47,11 @@ export async function visibleBoardIds(auth: AuthContext): Promise<string[]> {
           items: {
             some: {
               deletedAt: null,
-              OR: [{ ownerId: auth.userId }, { assignees: { some: { userId: auth.userId } } }],
+              OR: [
+                { ownerId: auth.userId },
+                { createdById: auth.userId },
+                { assignees: { some: { userId: auth.userId } } },
+              ],
             },
           },
         },
@@ -103,16 +108,17 @@ export async function workspaceFilter(auth: AuthContext): Promise<Prisma.Workspa
 }
 
 /**
- * Items on a visible board, or assigned to the caller. The second clause is
- * what keeps "my work" complete when a board grant is later withdrawn.
+ * The work itself: what you raised, what you own, what you were put on. Being
+ * able to see a department does NOT mean seeing everything filed in it - a
+ * department is shared, the tasks inside it are not.
  */
 export async function itemFilter(auth: AuthContext): Promise<Prisma.ItemWhereInput> {
   if (seesWholeOrganization(auth)) return {};
 
   return {
     OR: [
-      { boardId: { in: await visibleBoardIds(auth) } },
       { ownerId: auth.userId },
+      { createdById: auth.userId },
       { assignees: { some: { userId: auth.userId } } },
     ],
   };
