@@ -36,7 +36,12 @@ export function toItemDto(row: ItemRow): ItemDto {
     dueDate: row.dueDate?.toISOString() ?? null,
     blockedReason: row.blockedReason,
     nextMeeting: upcoming
-      ? { id: upcoming.id, title: upcoming.title, startsAt: upcoming.startsAt.toISOString() }
+      ? {
+          id: upcoming.id,
+          title: upcoming.title,
+          startsAt: upcoming.startsAt.toISOString(),
+          joinUrl: upcoming.joinUrl,
+        }
       : null,
     parentId: row.parentId,
     subitemCount: row._count.subitems,

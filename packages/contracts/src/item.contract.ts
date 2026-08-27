@@ -51,7 +51,7 @@ export interface ItemDto {
   dueDate: string | null;
   blockedReason: string | null;
   /** Earliest upcoming meeting this task is on the agenda for, if any. */
-  nextMeeting: { id: string; title: string; startsAt: string } | null;
+  nextMeeting: { id: string; title: string; startsAt: string; joinUrl: string | null } | null;
   parentId: string | null;
   subitemCount: number;
   createdAt: string;

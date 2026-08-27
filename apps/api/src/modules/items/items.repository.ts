@@ -11,7 +11,11 @@ export const itemInclude = {
   },
   // Agenda links carry the meeting a task is scheduled to be discussed at.
   agendaFor: {
-    include: { meeting: { select: { id: true, title: true, startsAt: true, cancelledAt: true } } },
+    include: {
+      meeting: {
+        select: { id: true, title: true, startsAt: true, joinUrl: true, cancelledAt: true },
+      },
+    },
   },
   _count: { select: { subitems: true } },
 } satisfies Prisma.ItemInclude;

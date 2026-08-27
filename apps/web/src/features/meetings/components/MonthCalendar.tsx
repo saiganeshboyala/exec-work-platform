@@ -7,10 +7,12 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export function MonthCalendar({
   anchor,
   meetings,
+  selectedId,
   onSelect,
 }: {
   anchor: Date;
   meetings: MeetingDto[];
+  selectedId?: string | null;
   onSelect: (meeting: MeetingDto) => void;
 }) {
   const days = monthGrid(anchor);
@@ -69,12 +71,16 @@ export function MonthCalendar({
               </span>
 
               <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {dayMeetings.map((meeting) => (
+                {dayMeetings.map((meeting) => {
+                  const isSelected = meeting.id === selectedId;
+
+                  return (
                   <button
                     key={meeting.id}
                     type="button"
                     onClick={() => onSelect(meeting)}
                     title={meeting.title}
+                    aria-current={isSelected ? 'true' : undefined}
                     style={{
                       textAlign: 'left',
                       border: 'none',
@@ -88,6 +94,10 @@ export function MonthCalendar({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      // Arriving from a task, the meeting has to be findable.
+                      outline: isSelected ? '2px solid var(--accent)' : 'none',
+                      outlineOffset: 1,
+                      fontWeight: isSelected ? 600 : 400,
                     }}
                   >
                     {new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(
@@ -95,7 +105,8 @@ export function MonthCalendar({
                     )}{' '}
                     {meeting.title}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );

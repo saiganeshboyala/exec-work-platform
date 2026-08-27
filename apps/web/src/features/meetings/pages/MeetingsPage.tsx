@@ -1,6 +1,6 @@
 import type { MeetingDto } from '@ewp/contracts';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { boardsApi } from '@/features/boards';
@@ -20,6 +20,7 @@ export function MeetingsPage() {
   const [params, setParams] = useSearchParams();
   const [anchor, setAnchor] = useState(() => new Date());
   const [selected, setSelected] = useState<MeetingDto | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   // The grid always shows six full weeks, so query exactly that window.
   const [from, to] = useMemo(() => {
@@ -33,6 +34,36 @@ export function MeetingsPage() {
     queryKey: ['meetings', from.toISOString(), to.toISOString()],
     queryFn: () => meetingsApi.listInRange(from, to),
   });
+
+  // Arriving from a task's Meeting chip: the meeting may be in another month,
+  // so look across a wide window rather than only the one on screen.
+  const requestedId = params.get('meeting');
+
+  const requested = useQuery({
+    queryKey: ['meeting', requestedId],
+    enabled: requestedId !== null,
+    queryFn: async () => {
+      const year = 365 * 24 * 60 * 60 * 1000;
+      const found = await meetingsApi.listInRange(
+        new Date(Date.now() - year),
+        new Date(Date.now() + year),
+      );
+      return found.find((meeting) => meeting.id === requestedId) ?? null;
+    },
+  });
+
+  useEffect(() => {
+    if (!requested.data) return;
+    setAnchor(new Date(requested.data.startsAt));
+    setSelected(requested.data);
+    // The detail card sits under the calendar, so bring it into view.
+    window.setTimeout(
+      () => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      120,
+    );
+    // Drop the parameter so a later reload does not keep re-opening it.
+    setParams({}, { replace: true });
+  }, [requested.data, setParams]);
 
   const workspaces = useQuery({ queryKey: queryKeys.workspaces, queryFn: boardsApi.listWorkspaces });
   const members = useQuery({ queryKey: queryKeys.members, queryFn: membersApi.list });
@@ -123,10 +154,15 @@ export function MeetingsPage() {
 
       {meetings.error ? <ErrorNotice error={meetings.error} /> : null}
 
-      <MonthCalendar anchor={anchor} meetings={meetings.data ?? []} onSelect={setSelected} />
+      <MonthCalendar
+        anchor={anchor}
+        meetings={meetings.data ?? []}
+        selectedId={selected?.id ?? null}
+        onSelect={setSelected}
+      />
 
       {selected ? (
-        <div className="card stack">
+        <div ref={detailRef} className="card stack">
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
             <div>
               <h2 style={{ fontSize: 17, fontWeight: 500 }}>{selected.title}</h2>
