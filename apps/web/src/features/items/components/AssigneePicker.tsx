@@ -77,9 +77,13 @@ export function AssigneePicker({
   // Search covers the name and the address, since colleagues are often known
   // by one or the other.
   const term = search.trim().toLowerCase();
+
+  // With no search, only the people already on the task. Listing the whole
+  // organisation made the panel a directory to read rather than a box to type
+  // into, and it got worse with every colleague added.
   const matches =
     term === ''
-      ? members
+      ? members.filter((member) => selected.has(member.userId) || member.userId === ownerId)
       : members.filter(
           (member) =>
             member.fullName.toLowerCase().includes(term) ||
@@ -180,7 +184,9 @@ export function AssigneePicker({
               <div style={{ overflowY: 'auto', minHeight: 0 }}>
               {matches.length === 0 ? (
                 <p className="meta" style={{ padding: '6px 8px' }}>
-                  Nobody matches that.
+                  {search.trim() === ''
+                    ? 'Type a name to add somebody.'
+                    : 'Nobody matches that.'}
                 </p>
               ) : null}
 

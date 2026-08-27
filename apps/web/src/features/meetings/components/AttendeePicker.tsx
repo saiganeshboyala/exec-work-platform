@@ -4,10 +4,14 @@ import { useMemo, useState } from 'react';
 import { Avatar } from '@/shared/components/Avatar';
 import { WarningIcon } from '@/shared/components/icons';
 
+/** Enough to choose from without turning the results into a second directory. */
+const MAX_RESULTS = 8;
+
 /**
- * Who is coming. Chosen people turn green so the selection reads at a glance
- * rather than by hunting for ticked boxes, and the search box keeps a hundred
- * colleagues usable - the wrapped list alone stopped scaling well past a dozen.
+ * Who is coming. Only the people already chosen are listed; everyone else is
+ * found by typing. Showing the whole organisation was a wall of names that got
+ * worse with every colleague added, and reading it was never the point - the
+ * question is always "is this person on it", which the chosen list answers.
  *
  * `busyIds` are people already booked in the proposed window: those stay amber
  * while selected, because a clash is more urgent than the fact of being picked.
@@ -25,16 +29,34 @@ export function AttendeePicker({
 }) {
   const [search, setSearch] = useState('');
 
-  const matches = useMemo(() => {
+  const chosen = useMemo(
+    () => selected.map((id) => members.find((m) => m.userId === id)).filter(Boolean) as MemberDto[],
+    [members, selected],
+  );
+
+  // Results only exist while there is something to match. Already-chosen people
+  // are left out: they are on screen above, and offering them again reads as a
+  // way to add them twice.
+  const results = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (term === '') return members;
-    return members.filter(
-      (member) =>
-        member.fullName.toLowerCase().includes(term) ||
-        member.email.toLowerCase().includes(term) ||
-        (member.jobTitle ?? '').toLowerCase().includes(term),
-    );
-  }, [members, search]);
+    if (term === '') return [];
+
+    return members
+      .filter((member) => !selected.includes(member.userId))
+      .filter(
+        (member) =>
+          member.fullName.toLowerCase().includes(term) ||
+          member.email.toLowerCase().includes(term) ||
+          (member.jobTitle ?? '').toLowerCase().includes(term),
+      )
+      .slice(0, MAX_RESULTS);
+  }, [members, selected, search]);
+
+  const add = (userId: string): void => {
+    onToggle(userId);
+    // Cleared so the next name can be typed straight away.
+    setSearch('');
+  };
 
   return (
     <div className="stack" style={{ gap: 'var(--space-2)' }}>
@@ -42,10 +64,19 @@ export function AttendeePicker({
         <input
           className="field__input"
           type="search"
-          placeholder="Search people…"
-          aria-label="Search attendees"
+          placeholder="Search people to add…"
+          aria-label="Search people to add"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter takes the top match, so a whole list can be typed without
+            // reaching for the mouse.
+            if (event.key === 'Enter' && results[0]) {
+              event.preventDefault();
+              add(results[0].userId);
+            }
+            if (event.key === 'Escape') setSearch('');
+          }}
           style={{ flex: 1, height: 32 }}
         />
         <span className="meta" style={{ whiteSpace: 'nowrap' }}>
@@ -53,31 +84,72 @@ export function AttendeePicker({
         </span>
       </div>
 
-      {matches.length === 0 ? (
-        <p className="meta">Nobody matches “{search}”.</p>
+      {search.trim() !== '' ? (
+        results.length === 0 ? (
+          <p className="meta">Nobody left to add matches “{search.trim()}”.</p>
+        ) : (
+          <div
+            role="listbox"
+            aria-label="Search results"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+              maxHeight: 180,
+              overflowY: 'auto',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--radius)',
+              padding: 4,
+            }}
+          >
+            {results.map((member) => (
+              <button
+                key={member.userId}
+                type="button"
+                role="option"
+                aria-selected={false}
+                onClick={() => add(member.userId)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 8px',
+                  border: 'none',
+                  borderRadius: 'var(--radius)',
+                  background: 'transparent',
+                  font: 'inherit',
+                  fontSize: 'var(--text-base)',
+                  color: 'var(--ink)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <Avatar id={member.userId} fullName={member.fullName} size={20} />
+                <span style={{ flex: 1, minWidth: 0 }}>{member.fullName}</span>
+                <span className="meta" style={{ fontSize: 'var(--text-xs)' }}>
+                  {member.jobTitle ?? member.email}
+                </span>
+              </button>
+            ))}
+          </div>
+        )
+      ) : null}
+
+      {chosen.length === 0 ? (
+        <p className="meta">Nobody added yet — type a name above.</p>
       ) : (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            // Long lists scroll here rather than pushing the buttons off screen.
-            maxHeight: 168,
-            overflowY: 'auto',
-          }}
-        >
-          {matches.map((member) => {
-            const on = selected.includes(member.userId);
-            const busy = on && (busyIds?.has(member.userId) ?? false);
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {chosen.map((member) => {
+            const busy = busyIds?.has(member.userId) ?? false;
 
             return (
               <button
                 key={member.userId}
                 type="button"
                 className="chip"
-                aria-pressed={on}
+                aria-pressed
                 onClick={() => onToggle(member.userId)}
-                title={member.jobTitle ?? member.email}
+                title={`Remove ${member.fullName}`}
                 style={
                   busy
                     ? {
@@ -85,14 +157,12 @@ export function AttendeePicker({
                         color: 'var(--at-risk)',
                         background: 'var(--at-risk-wash)',
                       }
-                    : on
-                      ? {
-                          borderColor: 'var(--on-track)',
-                          color: 'var(--on-track)',
-                          background: 'var(--on-track-wash)',
-                          fontWeight: 600,
-                        }
-                      : undefined
+                    : {
+                        borderColor: 'var(--on-track)',
+                        color: 'var(--on-track)',
+                        background: 'var(--on-track-wash)',
+                        fontWeight: 600,
+                      }
                 }
               >
                 <Avatar id={member.userId} fullName={member.fullName} size={18} />
@@ -101,9 +171,10 @@ export function AttendeePicker({
                   <span aria-label="has a clash" style={{ display: 'inline-flex' }}>
                     <WarningIcon size={12} />
                   </span>
-                ) : on ? (
-                  <span aria-hidden="true">✓</span>
                 ) : null}
+                <span aria-hidden="true" style={{ opacity: 0.7 }}>
+                  ×
+                </span>
               </button>
             );
           })}
