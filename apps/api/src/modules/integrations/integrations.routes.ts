@@ -24,7 +24,9 @@ export const integrationsRouter = Router();
 integrationsRouter.get(
   '/google/authorize',
   authenticate,
-  authorize('MEMBER'),
+  // Connecting your own calendar affects nobody else, so any signed-in person
+  // may do it. MEMBER was needlessly locking out viewers and guests.
+  authorize('VIEWER'),
   asyncHandler(async (req: Request, res: Response) => {
     const auth = requireAuth(req);
     const state = signCalendarState({ userId: auth.userId, organizationId: auth.organizationId });
@@ -39,7 +41,11 @@ integrationsRouter.get(
     const state = typeof req.query.state === 'string' ? req.query.state : null;
 
     if (req.query.error) {
-      res.redirect(`${env.WEB_BASE_URL}/meetings?calendar=denied`);
+      // Google's own reason is far more useful than a generic failure: the
+      // common one is access_denied because the app is still in Testing and
+      // this person is not on the tester list.
+      const reason = typeof req.query.error === 'string' ? req.query.error : 'denied';
+      res.redirect(`${env.WEB_BASE_URL}/meetings?calendar=denied&reason=${encodeURIComponent(reason)}`);
       return;
     }
     if (!code || !state) throw AppError.badRequest('Google did not return an authorisation code');
@@ -73,7 +79,7 @@ integrationsRouter.get(
 integrationsRouter.delete(
   '/google',
   authenticate,
-  authorize('MEMBER'),
+  authorize('VIEWER'),
   asyncHandler(async (req: Request, res: Response) => {
     await disconnect(requireAuth(req).userId);
     sendNoContent(res);

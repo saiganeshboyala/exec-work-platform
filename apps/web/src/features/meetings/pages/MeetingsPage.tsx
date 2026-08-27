@@ -1,5 +1,5 @@
 import type { MeetingDto } from '@ewp/contracts';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -18,8 +18,10 @@ import { ScheduleMeetingForm } from '../components/ScheduleMeetingForm';
 
 export function MeetingsPage() {
   const [params, setParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [anchor, setAnchor] = useState(() => new Date());
   const [selected, setSelected] = useState<MeetingDto | null>(null);
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const detailRef = useRef<HTMLDivElement>(null);
 
   // The grid always shows six full weeks, so query exactly that window.
@@ -76,6 +78,14 @@ export function MeetingsPage() {
     },
   });
 
+  const disconnect = useMutation({
+    mutationFn: meetingsApi.disconnectCalendar,
+    onSuccess: async () => {
+      setConfirmingDisconnect(false);
+      await queryClient.invalidateQueries({ queryKey: ['calendar-status'] });
+    },
+  });
+
   const banner = params.get('calendar');
 
   const shift = (months: number): void => {
@@ -121,12 +131,33 @@ export function MeetingsPage() {
           </button>
         </p>
       ) : banner === 'denied' ? (
-        <p className="card" style={{ color: 'var(--blocked)', background: 'var(--blocked-wash)' }}>
-          Google access was declined, so meetings will not sync.
-          <button className="btn" style={{ marginLeft: 'var(--space-3)' }} onClick={() => setParams({})}>
+        <div
+          role="alert"
+          className="card stack"
+          style={{ color: 'var(--blocked)', background: 'var(--blocked-wash)', borderColor: 'var(--blocked)' }}
+        >
+          <p style={{ fontWeight: 600 }}>Google did not grant access</p>
+
+          {params.get('reason') === 'access_denied' ? (
+            <p style={{ fontSize: 'var(--text-md)' }}>
+              This usually means the Google app is still in <b>Testing</b>, which only lets
+              approved testers connect. Ask an administrator to add your Google address under
+              <b> APIs &amp; Services → OAuth consent screen → Test users</b>, or to publish the
+              app. You can still schedule meetings and paste a join link in the meantime.
+            </p>
+          ) : (
+            <p style={{ fontSize: 'var(--text-md)' }}>
+              {params.get('reason')
+                ? `Google reported: ${params.get('reason')}.`
+                : 'The request was declined.'}{' '}
+              Meetings will not sync until this is resolved.
+            </p>
+          )}
+
+          <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setParams({})}>
             Dismiss
           </button>
-        </p>
+        </div>
       ) : null}
 
       {calendar.data && !calendar.data.connected ? (
@@ -149,7 +180,42 @@ export function MeetingsPage() {
           </button>
         </div>
       ) : calendar.data?.connected ? (
-        <p className="meta">Google Calendar connected as {calendar.data.connectedEmail}</p>
+        <div className="row" style={{ gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <span className="meta">
+            Google Calendar connected as {calendar.data.connectedEmail}
+          </span>
+
+          {confirmingDisconnect ? (
+            <>
+              <span style={{ fontSize: 'var(--text-base)' }}>
+                Disconnect? New meetings will stop getting Meet links.
+              </span>
+              <button
+                className="btn btn--sm"
+                disabled={disconnect.isPending}
+                style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
+                onClick={() => disconnect.mutate()}
+              >
+                {disconnect.isPending ? 'Disconnecting…' : 'Yes, disconnect'}
+              </button>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setConfirmingDisconnect(false)}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => setConfirmingDisconnect(true)}
+            >
+              Disconnect
+            </button>
+          )}
+
+          {disconnect.error ? <ErrorNotice error={disconnect.error} /> : null}
+        </div>
       ) : null}
 
       {meetings.error ? <ErrorNotice error={meetings.error} /> : null}
