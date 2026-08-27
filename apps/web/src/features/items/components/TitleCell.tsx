@@ -8,10 +8,13 @@ export function TitleCell({
   value,
   onCommit,
   disabled,
+  /** "heading" is the drawer's own title, which has to look like the heading it replaced. */
+  size = 'row',
 }: {
   value: string;
   onCommit: (next: string) => void;
   disabled?: boolean;
+  size?: 'row' | 'heading';
 }) {
   const [draft, setDraft] = useState(value);
 
@@ -48,7 +51,9 @@ export function TitleCell({
         background: 'transparent',
         padding: '5px 6px',
         font: 'inherit',
-        fontSize: 14,
+        fontSize: size === 'heading' ? 'var(--text-xl)' : 14,
+        fontWeight: size === 'heading' ? 550 : 400,
+        lineHeight: size === 'heading' ? 1.3 : undefined,
         color: 'var(--ink)',
       }}
       onFocus={(event) => {

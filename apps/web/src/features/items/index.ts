@@ -8,6 +8,7 @@ export { QuickCreateTask } from './components/QuickCreateTask';
 export { SelectCell } from './components/SelectCell';
 export { TaskMeetingDialog } from './components/TaskMeetingDialog';
 export { TimelineView } from './components/TimelineView';
+export { TitleCell } from './components/TitleCell';
 export { useBoardItems } from './hooks/useBoardItems';
 export { useBulkActions } from './hooks/useBulkActions';
 export type { BulkPatch } from './hooks/useBulkActions';

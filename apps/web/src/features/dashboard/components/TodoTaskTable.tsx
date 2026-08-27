@@ -85,12 +85,12 @@ export function TodoTaskTable({
               borderBottom: '1px solid var(--line)',
             }}
           >
-            {/* The name is the obvious thing to click, so it opens the task
-                rather than sitting there as dead text. */}
+            {/* Opens the whole task for editing - name included - rather than
+                renaming in place, which would reach only one field of it. */}
             <button
               type="button"
               onClick={() => onOpen(item)}
-              title={`Open ${item.title}`}
+              title={`Edit ${item.title}`}
               style={{
                 border: 'none',
                 background: 'none',
@@ -183,7 +183,7 @@ export function TodoTaskTable({
                 className="btn btn--ghost btn--sm"
                 style={{ height: 26, padding: '0 8px', color: 'var(--accent)' }}
               >
-                Details
+                Edit
               </button>
 
               {canEdit ? (

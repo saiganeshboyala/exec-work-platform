@@ -19,6 +19,7 @@ import { collabApi } from '../api/collab.api';
 
 import { AssigneePicker } from './AssigneePicker';
 import { SelectCell } from './SelectCell';
+import { TitleCell } from './TitleCell';
 
 type Tab = 'details' | 'comments' | 'links' | 'activity';
 
@@ -122,9 +123,16 @@ export function ItemDrawer({
       >
         <header style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--line)' }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 550, lineHeight: 1.3 }}>
-              {item.title}
-            </h2>
+            {/* The name was the one field the drawer could not change, which
+                made "edit the task" a half-truth. */}
+            <span style={{ flex: 1, minWidth: 0, marginRight: 'var(--space-2)' }}>
+              <TitleCell
+                value={item.title}
+                size="heading"
+                disabled={!canEdit}
+                onCommit={(title) => onPatch({ title })}
+              />
+            </span>
             <span className="row" style={{ gap: 4 }}>
               {canEdit && onSchedule ? (
                 <button className="btn btn--sm" onClick={onSchedule} title="Schedule a meeting about this task">
@@ -140,7 +148,7 @@ export function ItemDrawer({
           <nav className="row" style={{ gap: 2, marginTop: 'var(--space-3)' }}>
             {(
               [
-                ['details', 'Details'],
+                ['details', 'Edit'],
                 ['comments', 'Comments'],
                 ['links', 'Dependencies'],
                 ['activity', 'History'],
