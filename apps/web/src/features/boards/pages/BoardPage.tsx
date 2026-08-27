@@ -316,6 +316,7 @@ export function BoardPage() {
           canEdit={canEdit}
           onPatch={(patch) => update.mutate({ id: openItem.id, patch })}
           onSchedule={() => setMeetingItemId(openItem.id)}
+          onDelete={() => remove.mutate(openItem.id)}
           onClose={closeDrawer}
         />
       ) : null}

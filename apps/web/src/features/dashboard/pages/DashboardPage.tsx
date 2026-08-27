@@ -71,6 +71,14 @@ export function DashboardPage() {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => itemsApi.remove(id),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
   const all = useMemo(() => tasks.data ?? [], [tasks.data]);
 
   const visible = useMemo(() => {
@@ -260,6 +268,7 @@ export function DashboardPage() {
           canEdit={canEdit}
           onPatch={(patch) => update.mutate({ id: openItem.id, patch })}
           onSchedule={() => setMeetingItem(openItem)}
+          onDelete={() => remove.mutate(openItem.id)}
           onClose={() => setOpenItemId(null)}
         />
       ) : null}

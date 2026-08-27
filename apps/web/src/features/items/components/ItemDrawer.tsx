@@ -36,6 +36,7 @@ export function ItemDrawer({
   canEdit,
   onPatch,
   onSchedule,
+  onDelete,
   onClose,
 }: {
   item: ItemDto;
@@ -44,9 +45,12 @@ export function ItemDrawer({
   canEdit: boolean;
   onPatch: (patch: UpdateItemInput) => void;
   onSchedule?: () => void;
+  /** Omitted where the surrounding view has no way to remove a task. */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('details');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -328,6 +332,69 @@ export function ItemDrawer({
                       </li>
                     ))}
                   </ul>
+                </div>
+              ) : null}
+
+              {/* Last, and set apart: deleting is the one action here that
+                  cannot be undone by typing the old value back in. */}
+              {canEdit && onDelete ? (
+                <div
+                  style={{
+                    marginTop: 'var(--space-4)',
+                    paddingTop: 'var(--space-4)',
+                    borderTop: '1px solid var(--line)',
+                  }}
+                >
+                  {confirmingDelete ? (
+                    <div
+                      role="alert"
+                      className="stack"
+                      style={{
+                        gap: 8,
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius)',
+                        border: '1px solid var(--blocked)',
+                        background: 'var(--blocked-wash)',
+                      }}
+                    >
+                      <p style={{ fontWeight: 600, color: 'var(--blocked)' }}>Delete this task?</p>
+                      <p style={{ fontSize: 'var(--text-md)' }}>
+                        Its comments and history go with it.
+                        {subitems.length > 0
+                          ? ` So do its ${subitems.length} subitem${subitems.length === 1 ? '' : 's'}.`
+                          : ''}
+                      </p>
+                      <div className="row" style={{ gap: 'var(--space-2)' }}>
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
+                          onClick={() => {
+                            onDelete();
+                            onClose();
+                          }}
+                        >
+                          Yes, delete it
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => setConfirmingDelete(false)}
+                        >
+                          Keep it
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      style={{ color: 'var(--blocked)' }}
+                      onClick={() => setConfirmingDelete(true)}
+                    >
+                      Delete task
+                    </button>
+                  )}
                 </div>
               ) : null}
             </div>

@@ -116,6 +116,7 @@ export function DepartmentPeek({ boardId, boardName }: { boardId: string; boardN
           canEdit={canEdit}
           onPatch={(patch) => update.mutate({ id: openItem.id, patch })}
           onSchedule={() => setMeetingItemId(openItem.id)}
+          onDelete={() => remove.mutate(openItem.id)}
           onClose={() => setOpenItemId(null)}
         />
       ) : null}
