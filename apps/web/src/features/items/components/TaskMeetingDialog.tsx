@@ -55,6 +55,8 @@ export function TaskMeetingDialog({
     return [...new Set(ids)];
   });
 
+  const [calendarWarning, setCalendarWarning] = useState<string | null>(null);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose();
@@ -89,8 +91,17 @@ export function TaskMeetingDialog({
         itemIds: [item.id],
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
       }),
-    onSuccess: async () => {
+    onSuccess: async (meeting) => {
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+
+      // The meeting was saved either way. When the calendar could not mint a
+      // link, stay open and say why - closing would hide the one explanation
+      // the person is going to want.
+      if (meeting.calendarWarning) {
+        setCalendarWarning(meeting.calendarWarning);
+        return;
+      }
       onClose();
     },
   });
@@ -296,21 +307,54 @@ export function TaskMeetingDialog({
             <p className="field__error">{schedule.error.fieldErrors.attendeeIds}</p>
           ) : null}
 
-          <div className="row" style={{ justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-            <button className="btn" onClick={onClose}>Cancel</button>
-            <button
-              className="btn btn--primary"
-              disabled={
-                schedule.isPending || attendeeIds.length === 0 || title.trim() === '' || !validWindow
-              }
-              onClick={() => schedule.mutate()}
+          {calendarWarning ? (
+            <div
+              role="alert"
+              className="stack"
+              style={{
+                gap: 6,
+                padding: 'var(--space-3)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--at-risk)',
+                background: 'var(--at-risk-wash)',
+              }}
             >
-              {schedule.isPending
-                ? 'Scheduling…'
-                : clashes.length > 0
-                  ? 'Schedule anyway'
-                  : 'Schedule'}
-            </button>
+              <p style={{ fontWeight: 600, color: 'var(--at-risk)' }}>
+                <WarningIcon /> Meeting saved, but without a join link
+              </p>
+              <p style={{ fontSize: 'var(--text-md)' }}>{calendarWarning}</p>
+              <p className="meta">
+                You can still add a link yourself: open the meeting and paste one in.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+            {calendarWarning ? (
+              <button className="btn btn--primary" onClick={onClose}>
+                Done
+              </button>
+            ) : (
+              <>
+                <button className="btn" onClick={onClose}>Cancel</button>
+                <button
+                  className="btn btn--primary"
+                  disabled={
+                    schedule.isPending ||
+                    attendeeIds.length === 0 ||
+                    title.trim() === '' ||
+                    !validWindow
+                  }
+                  onClick={() => schedule.mutate()}
+                >
+                  {schedule.isPending
+                    ? 'Scheduling…'
+                    : clashes.length > 0
+                      ? 'Schedule anyway'
+                      : 'Schedule'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

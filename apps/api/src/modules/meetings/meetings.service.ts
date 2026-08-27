@@ -187,6 +187,16 @@ export const meetingsService = {
       include: { attendees: { include: { user: { select: { id: true, email: true, fullName: true } } } } },
     });
 
+    let calendarWarning: string | undefined;
+
+    // The user typed their own link, so nobody is waiting on Google for one.
+    const wantsGeneratedLink = !input.joinUrl;
+
+    if (wantsGeneratedLink && calendarProvider.name === 'none') {
+      calendarWarning =
+        'No calendar is connected on this server, so no Meet link was created. Paste a join link on the meeting, or set CALENDAR_DRIVER=google on the API.';
+    }
+
     try {
       const event = await calendarProvider.createEvent({
         title: input.title,
@@ -209,6 +219,9 @@ export const meetingsService = {
       }
     } catch (error) {
       logger.error({ err: error, meetingId: meeting.id }, 'Calendar sync failed; meeting kept');
+      // Handed back to the caller below. Keeping the meeting is right, but
+      // saying nothing leaves people staring at a meeting with no link.
+      calendarWarning = error instanceof Error ? error.message : 'Calendar sync failed';
     }
 
     await notificationsService.notify({
@@ -231,7 +244,10 @@ export const meetingsService = {
 
     const fresh = await loadMeeting(meeting.id);
     if (!fresh) throw AppError.internal();
-    return toDto(fresh);
+
+    const dto = toDto(fresh);
+    // A link that arrived by another route means there is nothing to warn about.
+    return dto.joinUrl === null && calendarWarning ? { ...dto, calendarWarning } : dto;
   },
 
   /**

@@ -41,6 +41,7 @@ export function ScheduleMeetingForm({
   const [trackAsTask, setTrackAsTask] = useState(true);
   const [taskBoardId, setTaskBoardId] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [calendarWarning, setCalendarWarning] = useState<string | null>(null);
 
   // The tracking task lives on a board in the meeting's own workspace.
   const boards = useQuery({
@@ -63,11 +64,14 @@ export function ScheduleMeetingForm({
         ...(trackAsTask && taskBoardId !== '' ? { createTaskOnBoardId: taskBoardId } : {}),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (meeting) => {
       setTitle('');
       setJoinUrl('');
       setAttendeeIds([]);
       setFieldErrors({});
+      // Saved, but the calendar could not mint a link - say so rather than
+      // leaving a linkless meeting to be discovered later.
+      setCalendarWarning(meeting.calendarWarning ?? null);
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
       onScheduled();
     },
@@ -220,6 +224,33 @@ export function ScheduleMeetingForm({
       </button>
 
       {schedule.error ? <ErrorNotice error={schedule.error} /> : null}
+
+      {calendarWarning ? (
+        <div
+          role="alert"
+          className="stack"
+          style={{
+            gap: 6,
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--at-risk)',
+            background: 'var(--at-risk-wash)',
+          }}
+        >
+          <p style={{ fontWeight: 600, color: 'var(--at-risk)' }}>
+            Meeting saved, but without a join link
+          </p>
+          <p style={{ fontSize: 'var(--text-md)' }}>{calendarWarning}</p>
+          <button
+            type="button"
+            className="btn btn--sm"
+            style={{ alignSelf: 'flex-start' }}
+            onClick={() => setCalendarWarning(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
     </form>
   );
 }

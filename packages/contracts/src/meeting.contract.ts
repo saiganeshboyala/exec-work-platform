@@ -90,6 +90,12 @@ export interface MeetingDto {
   attendees: Array<{ id: string; fullName: string }>;
   agendaItemIds: string[];
   decisionCount: number;
+  /**
+   * Why this meeting has no join link, when the calendar was meant to make one.
+   * Only set on the response that created the meeting - a sync failure does not
+   * fail the request, so without this the meeting arrives silently linkless.
+   */
+  calendarWarning?: string;
 }
 
 /** What the UI needs to decide between "Connect Google" and "Connected". */

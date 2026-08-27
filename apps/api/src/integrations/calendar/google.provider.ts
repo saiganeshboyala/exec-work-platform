@@ -205,7 +205,20 @@ export class GoogleCalendarProvider implements CalendarProvider {
     if (!response.ok) {
       const detail = await response.text();
       logger.error({ status: response.status, detail }, 'Google event creation failed');
-      throw AppError.badRequest('Google Calendar rejected the event');
+
+      // Google's own wording is the useful part - "Invalid attendee email" tells
+      // you what to fix, "rejected the event" does not.
+      let reason = detail;
+      try {
+        const parsed = JSON.parse(detail) as { error?: { message?: string } };
+        reason = parsed.error?.message ?? detail;
+      } catch {
+        /* not JSON; the raw body is still better than nothing */
+      }
+
+      throw AppError.badRequest(
+        `Google Calendar rejected the event (${response.status}): ${reason.slice(0, 300)}`,
+      );
     }
 
     const event = (await response.json()) as {
