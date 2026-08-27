@@ -21,6 +21,7 @@ export {
   completeOAuth,
   connectedEmail,
   disconnect,
+  hasCalendarScope,
   isGoogleConfigured,
 } from './google.provider';
 export type { CalendarEvent, CalendarEventInput, CalendarProvider } from './calendar.types';

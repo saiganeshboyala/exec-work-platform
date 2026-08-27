@@ -39,6 +39,9 @@ meetingsRouter.post(
   asyncHandler(meetingsController.schedule),
 );
 
+// The service checks organiser-or-manager; MEMBER here just keeps viewers out.
+meetingsRouter.delete('/:id', authorize('MEMBER'), asyncHandler(meetingsController.cancel));
+
 meetingsRouter.post(
   '/:id/decisions',
   authorize('MANAGER'),

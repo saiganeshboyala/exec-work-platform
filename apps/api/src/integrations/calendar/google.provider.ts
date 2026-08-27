@@ -11,14 +11,21 @@ const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
+const TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
+
+/** The one scope that actually lets us write events; the rest are identity. */
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 /** Calendar write access plus the email address, so we can show who is connected. */
-const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'openid', 'email'];
+const SCOPES = [CALENDAR_SCOPE, 'openid', 'email'];
 
 interface TokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
+  /** Space-separated list of what Google actually granted, which can be less
+   *  than what we asked for. */
+  scope?: string;
 }
 
 /** True when the server actually has credentials to talk to Google. */
@@ -96,6 +103,19 @@ export async function completeOAuth(
     );
   }
 
+  // Google grants only the scopes registered on the consent screen, quietly
+  // dropping the rest. Without this check the connection looks healthy and then
+  // every event creation fails with "insufficient authentication scopes".
+  const granted = (tokens.scope ?? '').split(' ');
+  if (!granted.includes(CALENDAR_SCOPE)) {
+    logger.error({ granted, userId }, 'Google withheld the calendar scope');
+    throw AppError.badRequest(
+      'Google did not grant calendar access, so meetings could not get a Meet link. ' +
+        `Add the ${CALENDAR_SCOPE} scope under APIs & Services -> OAuth consent screen -> Data access ` +
+        'in Google Cloud, check the Google Calendar API is enabled, then connect again.',
+    );
+  }
+
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
   await prisma.calendarConnection.upsert({
@@ -157,6 +177,25 @@ export async function connectedEmail(userId: string): Promise<string | null> {
   } catch (error) {
     logger.warn({ err: error, userId }, 'Could not read the connected Google account');
     return null;
+  }
+}
+
+/**
+ * Whether the stored grant can actually write events. A connection made before
+ * the scope was registered on the consent screen looks fine but cannot create
+ * anything, so the Meetings page needs to be able to say so.
+ */
+export async function hasCalendarScope(userId: string): Promise<boolean> {
+  try {
+    const token = await accessTokenFor(userId);
+    const response = await fetch(`${TOKENINFO_URL}?access_token=${encodeURIComponent(token)}`);
+    if (!response.ok) return false;
+
+    const info = (await response.json()) as { scope?: string };
+    return (info.scope ?? '').split(' ').includes(CALENDAR_SCOPE);
+  } catch (error) {
+    logger.warn({ err: error, userId }, 'Could not read the granted Google scopes');
+    return false;
   }
 }
 

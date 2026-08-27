@@ -6,7 +6,7 @@ import type {
 } from '@ewp/contracts';
 import type { Request, Response } from 'express';
 
-import { sendCreated, sendOk } from '@/common/http';
+import { sendCreated, sendNoContent, sendOk } from '@/common/http';
 import { requireAuth } from '@/common/middleware';
 
 import { meetingsService } from './meetings.service';
@@ -52,6 +52,11 @@ export const meetingsController = {
         req.requestId,
       ),
     );
+  },
+
+  async cancel(req: Request, res: Response): Promise<void> {
+    await meetingsService.cancel(requireAuth(req), req.params.id as string, req.requestId);
+    sendNoContent(res);
   },
 
   async recordDecision(req: Request, res: Response): Promise<void> {

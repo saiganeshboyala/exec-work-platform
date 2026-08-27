@@ -106,4 +106,9 @@ export interface CalendarConnectionDto {
   connectedEmail: string | null;
   /** False when the server has no client credentials, so connecting is pointless. */
   configured: boolean;
+  /**
+   * False when connected but Google withheld calendar access - the connection
+   * looks fine and cannot create a single event. Null when not connected.
+   */
+  canWriteEvents: boolean | null;
 }

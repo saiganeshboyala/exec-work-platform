@@ -10,6 +10,7 @@ import {
   completeOAuth,
   connectedEmail,
   disconnect,
+  hasCalendarScope,
   isGoogleConfigured,
 } from '@/integrations/calendar';
 import { signCalendarState, verifyCalendarState } from '@/modules/auth';
@@ -71,6 +72,8 @@ integrationsRouter.get(
       configured: env.CALENDAR_DRIVER === 'google' && isGoogleConfigured(),
       connected: email !== null,
       connectedEmail: email,
+      // Only worth asking Google once there is a connection to ask about.
+      canWriteEvents: email === null ? null : await hasCalendarScope(auth.userId),
     };
     sendOk(res, dto);
   }),

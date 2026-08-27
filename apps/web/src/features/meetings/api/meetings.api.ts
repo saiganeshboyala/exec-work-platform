@@ -26,6 +26,8 @@ export const meetingsApi = {
   schedule: (body: ScheduleMeetingInput) =>
     apiRequest<MeetingDto>('/meetings', { method: 'POST', body }),
 
+  cancel: (id: string) => apiRequest<void>(`/meetings/${id}`, { method: 'DELETE' }),
+
   calendarStatus: () => apiRequest<CalendarConnectionDto>('/integrations/google/status'),
 
   authorizeUrl: () => apiRequest<{ url: string }>('/integrations/google/authorize'),

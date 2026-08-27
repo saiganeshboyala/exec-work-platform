@@ -1,3 +1,4 @@
+import { ROLE_RANK } from '@ewp/contracts';
 import type { MeetingDto, RecordDecisionInput, ScheduleMeetingInput } from '@ewp/contracts';
 
 import { AppError } from '@/common/errors';
@@ -254,6 +255,68 @@ export const meetingsService = {
    * Closes the loop: a decision taken in the room becomes a tracked item with
    * an owner and a date, so the next agenda opens with its status.
    */
+  /**
+   * Cancels a meeting rather than deleting it: the decisions taken in it and
+   * the agenda it pulled together are still worth keeping, and every query
+   * already filters on cancelledAt.
+   */
+  async cancel(auth: AuthContext, meetingId: string, requestId: string) {
+    const meeting = await prisma.meeting.findFirst({
+      where: {
+        id: meetingId,
+        workspace: { organizationId: auth.organizationId, deletedAt: null },
+      },
+      include: { attendees: { select: { userId: true } } },
+    });
+    if (!meeting) throw AppError.notFound('Meeting');
+
+    // Organisers can call off their own meeting; past that it takes a manager,
+    // so one attendee cannot cancel something the rest of the room needs.
+    const isOrganiser = meeting.createdById === auth.userId;
+    if (!isOrganiser && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+      throw AppError.forbidden('Only the organiser or a manager can cancel this meeting');
+    }
+
+    if (meeting.cancelledAt !== null) return { alreadyCancelled: true };
+
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: { cancelledAt: new Date() },
+    });
+
+    // Best effort: the meeting is already cancelled here, and failing to reach
+    // Google should not undo that.
+    if (meeting.calendarEventId) {
+      try {
+        await calendarProvider.cancelEvent(meeting.calendarEventId, meeting.createdById);
+      } catch (error) {
+        logger.error({ err: error, meetingId }, 'Calendar cancellation failed; meeting cancelled');
+      }
+    }
+
+    await notificationsService.notify({
+      organizationId: auth.organizationId,
+      userIds: meeting.attendees.map((a) => a.userId).filter((id) => id !== auth.userId),
+      title: 'Meeting cancelled',
+      body: `${meeting.title} · ${meeting.startsAt.toLocaleString('en-GB')}`,
+      url: '/meetings',
+    });
+
+    await activityService.record({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      entityType: 'Meeting',
+      entityId: meetingId,
+      // No CANCELLED verb in the enum, and adding one means a migration for
+      // something DELETED already conveys.
+      verb: 'DELETED',
+      before: { title: meeting.title, startsAt: meeting.startsAt, cancelled: true },
+      requestId,
+    });
+
+    return { alreadyCancelled: false };
+  },
+
   async recordDecision(
     auth: AuthContext,
     meetingId: string,
