@@ -21,7 +21,14 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               return failureCount < 2;
             },
             staleTime: 30_000,
-            refetchOnWindowFocus: false,
+            // Several people work the same board at once, so a screen left open
+            // has to catch up on its own rather than waiting to be reloaded.
+            refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+            refetchInterval: 60_000,
+            // Polling a background tab wastes the server's time and the
+            // laptop's battery; focus brings it up to date anyway.
+            refetchIntervalInBackground: false,
           },
         },
       }),
