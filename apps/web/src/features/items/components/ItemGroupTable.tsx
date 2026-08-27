@@ -139,6 +139,7 @@ export function ItemGroupTable({
               <span style={{ textAlign: 'center' }}>Status</span>
               <span style={{ textAlign: 'center' }}>Priority</span>
               <span>Due</span>
+              <span>Meeting</span>
               <span style={{ textAlign: 'right' }}>Actions</span>
             </div>
           ) : null}

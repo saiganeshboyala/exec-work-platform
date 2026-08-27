@@ -5,12 +5,12 @@ import { Link } from 'react-router-dom';
 import { SelectCell } from '@/features/items';
 import { Avatar } from '@/shared/components/Avatar';
 import { CalendarIcon } from '@/shared/components/icons';
-import { formatDateTime } from '@/shared/lib/format';
+import { MeetingCell } from '@/shared/components/MeetingCell';
 import { PRIORITY_TONE, STATUS_TONE, toDateInputValue } from '@/shared/lib/item-meta';
 
 // The fixed columns must total well under the container or the flexible task
 // column collapses to nothing. minmax keeps it readable at any width.
-const GRID = 'minmax(220px, 2.2fr) 150px 170px 132px 120px 160px 92px';
+const GRID = 'minmax(200px, 2fr) 150px 168px 130px 118px 118px 138px 92px';
 
 /**
  * Every task the signed-in person can see, across departments. The board view
@@ -62,6 +62,7 @@ export function TodoTaskTable({
         <span style={{ textAlign: 'center' }}>Status</span>
         <span style={{ textAlign: 'center' }}>Priority</span>
         <span>Due</span>
+        <span>Meeting</span>
         <span style={{ textAlign: 'right' }}>Actions</span>
       </div>
 
@@ -148,38 +149,18 @@ export function TodoTaskTable({
               onChange={(priority) => onPatch(item.id, { priority })}
             />
 
-            <span className="row" style={{ gap: 4, minWidth: 0 }}>
-              <span
-                style={{
-                  fontSize: 'var(--text-base)',
-                  color: overdue ? 'var(--blocked)' : 'var(--ink-secondary)',
-                  fontWeight: overdue ? 600 : 400,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {toDateInputValue(item.dueDate) === '' ? '—' : toDateInputValue(item.dueDate)}
-              </span>
-
-              {item.nextMeeting ? (
-                <span
-                  className="badge"
-                  title={`${item.nextMeeting.title} — ${formatDateTime(item.nextMeeting.startsAt)}`}
-                  aria-label={`Meeting scheduled: ${item.nextMeeting.title}`}
-                  style={{
-                    background: 'var(--accent-wash)',
-                    color: 'var(--accent)',
-                    gap: 3,
-                    padding: '2px 6px',
-                    flexShrink: 0,
-                  }}
-                >
-                  <CalendarIcon size={11} />
-                  {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(
-                    new Date(item.nextMeeting.startsAt),
-                  )}
-                </span>
-              ) : null}
+            <span
+              style={{
+                fontSize: 'var(--text-base)',
+                color: overdue ? 'var(--blocked)' : 'var(--ink-secondary)',
+                fontWeight: overdue ? 600 : 400,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {toDateInputValue(item.dueDate) === '' ? '—' : toDateInputValue(item.dueDate)}
             </span>
+
+            <MeetingCell meeting={item.nextMeeting} />
 
             <span className="row" style={{ gap: 2, justifySelf: 'end' }}>
               <Link

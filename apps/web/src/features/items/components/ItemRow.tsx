@@ -10,14 +10,14 @@ import {
 import { useState } from 'react';
 
 import { CalendarIcon } from '@/shared/components/icons';
-import { formatDateTime } from '@/shared/lib/format';
+import { MeetingCell } from '@/shared/components/MeetingCell';
 import { PRIORITY_TONE, STATUS_TONE, toDateInputValue } from '@/shared/lib/item-meta';
 
 import { OwnerCell } from './OwnerCell';
 import { SelectCell } from './SelectCell';
 import { TitleCell } from './TitleCell';
 
-export const BOARD_GRID = '28px 1fr 240px 150px 130px 204px 104px';
+export const BOARD_GRID = '28px 1fr 232px 148px 126px 140px 138px 104px';
 
 export function ItemRow({
   item,
@@ -112,52 +112,30 @@ export function ItemRow({
         onChange={(priority) => onPatch({ priority })}
       />
 
-      <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-        <input
-          type="date"
-          aria-label="Due date"
-          value={toDateInputValue(item.dueDate)}
-          disabled={!canEdit}
-          onChange={(event) =>
-            onPatch({ dueDate: event.target.value === '' ? null : new Date(event.target.value) })
-          }
-          style={{
-            border: '1px solid transparent',
-            borderRadius: 'var(--radius)',
-            background: 'transparent',
-            padding: '5px 6px',
-            font: 'inherit',
-            fontSize: 'var(--text-base)',
-            color: overdue ? 'var(--blocked)' : 'var(--ink-secondary)',
-            fontWeight: overdue ? 600 : 400,
-            colorScheme: 'light dark',
-            // Enough for MM/DD/YYYY plus the native picker icon.
-            width: 128,
-            flexShrink: 0,
-          }}
-        />
+      <input
+        type="date"
+        aria-label="Due date"
+        value={toDateInputValue(item.dueDate)}
+        disabled={!canEdit}
+        onChange={(event) =>
+          onPatch({ dueDate: event.target.value === '' ? null : new Date(event.target.value) })
+        }
+        style={{
+          border: '1px solid transparent',
+          borderRadius: 'var(--radius)',
+          background: 'transparent',
+          padding: '5px 4px',
+          font: 'inherit',
+          fontSize: 'var(--text-base)',
+          color: overdue ? 'var(--blocked)' : 'var(--ink-secondary)',
+          fontWeight: overdue ? 600 : 400,
+          colorScheme: 'light dark',
+          width: '100%',
+          minWidth: 0,
+        }}
+      />
 
-        {/* Tells you at a glance that this task already has a slot booked. */}
-        {item.nextMeeting ? (
-          <span
-            className="badge"
-            title={`${item.nextMeeting.title} - ${formatDateTime(item.nextMeeting.startsAt)}`}
-            aria-label={`Meeting scheduled: ${item.nextMeeting.title}`}
-            style={{
-              background: 'var(--accent-wash)',
-              color: 'var(--accent)',
-              flexShrink: 0,
-              gap: 3,
-              padding: '2px 6px',
-            }}
-          >
-            <CalendarIcon size={11} />
-            {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(
-              new Date(item.nextMeeting.startsAt),
-            )}
-          </span>
-        ) : null}
-      </span>
+      <MeetingCell meeting={item.nextMeeting} />
 
       <span className="row" style={{ gap: 2, justifySelf: 'end' }}>
         <button
