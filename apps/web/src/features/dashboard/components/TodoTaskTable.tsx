@@ -6,7 +6,8 @@ import { SelectCell } from '@/features/items';
 import { Avatar } from '@/shared/components/Avatar';
 import { CalendarIcon } from '@/shared/components/icons';
 import { MeetingCell } from '@/shared/components/MeetingCell';
-import { PRIORITY_TONE, STATUS_TONE, toDateInputValue } from '@/shared/lib/item-meta';
+import { formatDueDate } from '@/shared/lib/format';
+import { PRIORITY_TONE, STATUS_TONE } from '@/shared/lib/item-meta';
 
 // The fixed columns must total well under the container or the flexible task
 // column collapses to nothing. minmax keeps it readable at any width.
@@ -22,11 +23,13 @@ export function TodoTaskTable({
   canEdit,
   onPatch,
   onSchedule,
+  onOpen,
 }: {
   items: ItemDto[];
   canEdit: boolean;
   onPatch: (id: string, patch: UpdateItemInput) => void;
   onSchedule: (item: ItemDto) => void;
+  onOpen: (item: ItemDto) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -82,20 +85,31 @@ export function TodoTaskTable({
               borderBottom: '1px solid var(--line)',
             }}
           >
-            <span
+            {/* The name is the obvious thing to click, so it opens the task
+                rather than sitting there as dead text. */}
+            <button
+              type="button"
+              onClick={() => onOpen(item)}
+              title={`Open ${item.title}`}
               style={{
+                border: 'none',
+                background: 'none',
+                padding: 0,
+                font: 'inherit',
                 fontSize: 'var(--text-md)',
+                color: 'var(--ink)',
+                textAlign: 'left',
+                cursor: 'pointer',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
-              title={item.title}
             >
               {item.status === 'BLOCKED' ? (
                 <span style={{ color: 'var(--blocked)', marginRight: 5 }}>●</span>
               ) : null}
               {item.title}
-            </span>
+            </button>
 
             <Link
               to={`/boards/${item.boardId}`}
@@ -157,19 +171,20 @@ export function TodoTaskTable({
                 whiteSpace: 'nowrap',
               }}
             >
-              {toDateInputValue(item.dueDate) === '' ? '—' : toDateInputValue(item.dueDate)}
+              {formatDueDate(item.dueDate)}
             </span>
 
             <MeetingCell meeting={item.nextMeeting} />
 
             <span className="row" style={{ gap: 2, justifySelf: 'end' }}>
-              <Link
-                to={`/boards/${item.boardId}?item=${item.id}`}
+              <button
+                type="button"
+                onClick={() => onOpen(item)}
                 className="btn btn--ghost btn--sm"
                 style={{ height: 26, padding: '0 8px', color: 'var(--accent)' }}
               >
                 Details
-              </Link>
+              </button>
 
               {canEdit ? (
                 <button

@@ -8,6 +8,7 @@ import { boardsApi } from '@/features/boards';
 import {
   applyFilters,
   DEFAULT_FILTERS,
+  ItemDrawer,
   itemsApi,
   QuickCreateTask,
   TaskMeetingDialog,
@@ -41,6 +42,10 @@ export function DashboardPage() {
 
   const [creating, setCreating] = useState(false);
   const [meetingItem, setMeetingItem] = useState<ItemDto | null>(null);
+  const [openItemId, setOpenItemId] = useState<string | null>(null);
+  // Kept out of BoardFilters: a department board is already one department, so
+  // the shared filter shape (which saved views persist) has no use for it.
+  const [departmentId, setDepartmentId] = useState('any');
   // Finished work is noise on a to-do list, so it starts hidden.
   const [filters, setFilters] = useState<BoardFilters>({ ...DEFAULT_FILTERS, hideDone: true });
 
@@ -67,7 +72,23 @@ export function DashboardPage() {
   });
 
   const all = useMemo(() => tasks.data ?? [], [tasks.data]);
-  const visible = useMemo(() => applyFilters(all, filters, user?.id), [all, filters, user?.id]);
+
+  const visible = useMemo(() => {
+    const matched = applyFilters(all, filters, user?.id);
+    return departmentId === 'any'
+      ? matched
+      : matched.filter((item) => item.boardId === departmentId);
+  }, [all, filters, user?.id, departmentId]);
+
+  // Only the departments that actually have tasks the caller can see - listing
+  // empty ones just gives people a way to filter down to nothing.
+  const departments = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of all) seen.set(item.boardId, item.boardName);
+    return [...seen].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [all]);
+
+  const openItem = all.find((item) => item.id === openItemId) ?? null;
 
   if (isPending) {
     return (
@@ -140,6 +161,20 @@ export function DashboardPage() {
             </select>
 
             <select
+              aria-label="Filter by department"
+              value={departmentId}
+              onChange={(event) => setDepartmentId(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="any">All departments</option>
+              {departments.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <select
               aria-label="Filter by due date"
               value={filters.due}
               onChange={(event) =>
@@ -181,6 +216,7 @@ export function DashboardPage() {
               canEdit={canEdit}
               onPatch={(id, patch) => update.mutate({ id, patch })}
               onSchedule={setMeetingItem}
+              onOpen={(item) => setOpenItemId(item.id)}
             />
           )}
       </section>
@@ -215,6 +251,18 @@ export function DashboardPage() {
       </section>
 
       {creating ? <QuickCreateTask onClose={() => setCreating(false)} /> : null}
+
+      {openItem ? (
+        <ItemDrawer
+          item={openItem}
+          items={all}
+          members={members.data ?? []}
+          canEdit={canEdit}
+          onPatch={(patch) => update.mutate({ id: openItem.id, patch })}
+          onSchedule={() => setMeetingItem(openItem)}
+          onClose={() => setOpenItemId(null)}
+        />
+      ) : null}
 
       {meetingItem ? (
         <TaskMeetingDialog
