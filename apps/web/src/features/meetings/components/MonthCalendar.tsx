@@ -46,8 +46,10 @@ export function MonthCalendar({
             <div
               key={day.toISOString()}
               style={{
-                minHeight: 96,
-                padding: 6,
+                // Six of these plus the weekday header have to fit a laptop
+                // screen without scrolling; 96 put the last week below the fold.
+                minHeight: 72,
+                padding: 5,
                 borderBottom: '1px solid var(--line)',
                 borderRight: '1px solid var(--line)',
                 background: inMonth ? 'var(--surface)' : 'var(--paper)',
@@ -70,7 +72,18 @@ export function MonthCalendar({
                 {day.getDate()}
               </span>
 
-              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {/* A busy day scrolls inside its own cell rather than stretching
+                  the whole week row and pushing the rest of the month down. */}
+              <div
+                style={{
+                  marginTop: 3,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  maxHeight: 44,
+                  overflowY: 'auto',
+                }}
+              >
                 {dayMeetings.map((meeting) => {
                   const isSelected = meeting.id === selectedId;
 
