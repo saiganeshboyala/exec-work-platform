@@ -14,6 +14,18 @@ export const meetingsApi = {
       query: { from: from.toISOString(), to: to.toISOString(), workspaceId },
     }),
 
+  /** Every meeting with this task on its agenda, past and future. */
+  listForItem: (itemId: string) => {
+    const year = 365 * 24 * 60 * 60 * 1000;
+    return apiRequest<MeetingDto[]>('/meetings', {
+      query: {
+        from: new Date(Date.now() - year).toISOString(),
+        to: new Date(Date.now() + year).toISOString(),
+        itemId,
+      },
+    });
+  },
+
   conflicts: (startsAt: Date, endsAt: Date, attendeeIds: string[], excludeMeetingId?: string) =>
     apiRequest<MeetingConflictDto[]>('/meetings/conflicts', {
       query: {

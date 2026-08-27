@@ -303,6 +303,10 @@ model MeetingAgendaItem {
   meetingId String @db.Uuid
   itemId    String @db.Uuid
   position  Int    @default(0)
+  /// True when the organiser put this task on the agenda, false when it was
+  /// swept in for being blocked or overdue. Only the first kind means the
+  /// meeting is about that task.
+  chosen    Boolean @default(false)
 
   meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)

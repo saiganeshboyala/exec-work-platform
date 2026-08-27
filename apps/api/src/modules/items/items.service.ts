@@ -15,6 +15,7 @@ import { itemFilter } from '@/modules/access';
 import { activityService } from '@/modules/activity';
 import { automationsService } from '@/modules/automations';
 import { boardsService } from '@/modules/boards';
+import { meetingsService } from '@/modules/meetings';
 import { notificationsService } from '@/modules/notifications';
 
 import { toItemDto } from './items.mapper';
@@ -229,6 +230,28 @@ export const itemsService = {
   async remove(auth: AuthContext, id: string, requestId: string): Promise<void> {
     await this.getOrFail(auth, id);
     await itemsRepository.softDelete(id);
+
+    // A meeting booked about this task has nothing left to discuss, so it goes
+    // too. One that also covers other tasks does not: the task drops off its
+    // agenda and the rest of the room still has a reason to meet.
+    const agendas = await prisma.meetingAgendaItem.findMany({
+      // Only meetings this task was actually put on. Being swept onto an agenda
+      // for being overdue does not make the meeting about it.
+      where: { itemId: id, chosen: true, meeting: { cancelledAt: null } },
+      select: { meetingId: true },
+    });
+
+    for (const { meetingId } of agendas) {
+      const remaining = await prisma.meetingAgendaItem.count({
+        where: { meetingId, chosen: true, itemId: { not: id }, item: { deletedAt: null } },
+      });
+
+      if (remaining === 0) {
+        await meetingsService.cancel(auth, meetingId, requestId).catch(() => undefined);
+      } else {
+        await prisma.meetingAgendaItem.deleteMany({ where: { meetingId, itemId: id } });
+      }
+    }
 
     await activityService.record({
       organizationId: auth.organizationId,

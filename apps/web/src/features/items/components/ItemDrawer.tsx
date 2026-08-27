@@ -192,11 +192,7 @@ export function ItemDrawer({
               </Row>
 
               <Row label="Meeting">
-                <MeetingRow
-                  meeting={item.nextMeeting}
-                  canEdit={canEdit}
-                  onSchedule={onSchedule}
-                />
+                <MeetingRow itemId={item.id} canEdit={canEdit} onSchedule={onSchedule} />
               </Row>
 
               <Row label="Status">

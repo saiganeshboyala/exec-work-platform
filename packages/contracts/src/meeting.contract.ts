@@ -75,6 +75,8 @@ export const listMeetingsQuerySchema = z
     from: z.coerce.date(),
     to: z.coerce.date(),
     workspaceId: z.string().uuid().optional(),
+    /** Every meeting with this task on its agenda, for the task's own panel. */
+    itemId: z.string().uuid().optional(),
   })
   .refine((v) => v.to > v.from, {
     message: 'The end of the range must be after the start',

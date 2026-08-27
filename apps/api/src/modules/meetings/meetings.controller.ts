@@ -26,6 +26,7 @@ export const meetingsController = {
         query.from,
         query.to,
         query.workspaceId,
+        query.itemId,
       ),
     );
   },

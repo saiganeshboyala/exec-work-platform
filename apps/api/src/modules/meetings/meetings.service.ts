@@ -69,11 +69,18 @@ export const meetingsService = {
   },
 
   /** The calendar view asks for a window rather than "the next ten". */
-  async listInRange(auth: AuthContext, from: Date, to: Date, workspaceId?: string) {
+  async listInRange(
+    auth: AuthContext,
+    from: Date,
+    to: Date,
+    workspaceId?: string,
+    itemId?: string,
+  ) {
     const rows = await prisma.meeting.findMany({
       where: {
         cancelledAt: null,
         startsAt: { gte: from, lte: to },
+        ...(itemId ? { agenda: { some: { itemId } } } : {}),
         workspace: {
           organizationId: auth.organizationId,
           deletedAt: null,
@@ -170,13 +177,11 @@ export const meetingsService = {
       createdTaskId = task.id;
     }
 
-    const agendaItemIds = [
-      ...new Set([
-        ...(createdTaskId ? [createdTaskId] : []),
-        ...input.itemIds,
-        ...attention.map((i) => i.id),
-      ]),
-    ];
+    // What the organiser asked for, as opposed to what was swept in for being
+    // blocked or overdue. Only the first kind makes a meeting "about" a task.
+    const chosenIds = new Set([...(createdTaskId ? [createdTaskId] : []), ...input.itemIds]);
+
+    const agendaItemIds = [...new Set([...chosenIds, ...attention.map((i) => i.id)])];
 
     const meeting = await prisma.meeting.create({
       data: {
@@ -189,7 +194,13 @@ export const meetingsService = {
         createdById: auth.userId,
         attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
         agenda: {
-          createMany: { data: agendaItemIds.map((itemId, position) => ({ itemId, position })) },
+          createMany: {
+            data: agendaItemIds.map((itemId, position) => ({
+              itemId,
+              position,
+              chosen: chosenIds.has(itemId),
+            })),
+          },
         },
       },
       include: { attendees: { include: { user: { select: { id: true, email: true, fullName: true } } } } },
@@ -269,7 +280,13 @@ export const meetingsService = {
             createdById: auth.userId,
             attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
             agenda: {
-              createMany: { data: agendaItemIds.map((itemId, position) => ({ itemId, position })) },
+              createMany: {
+                data: agendaItemIds.map((itemId, position) => ({
+                  itemId,
+                  position,
+                  chosen: chosenIds.has(itemId),
+                })),
+              },
             },
           },
           include: {

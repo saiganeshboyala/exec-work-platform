@@ -27,6 +27,12 @@ const VIEWS = [
   { value: 'month' as const, label: 'Month' },
 ];
 
+/** An ISO instant as the local value a datetime-local input expects. */
+function toLocalInput(iso: string): string {
+  const date = new Date(iso);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
 /** What the header says you are looking at, per view. */
 function headingFor(view: CalendarView, anchor: Date): string {
   if (view === 'day') {
@@ -65,6 +71,10 @@ export function MeetingsPage() {
   const [selected, setSelected] = useState<MeetingDto | null>(null);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editStartsAt, setEditStartsAt] = useState('');
+  const [editMinutes, setEditMinutes] = useState(30);
   const detailRef = useRef<HTMLDivElement>(null);
 
   // Fetch exactly what the current view draws - rangeFor owns both.
@@ -128,6 +138,24 @@ export function MeetingsPage() {
     },
   });
 
+  const edit = useMutation({
+    mutationFn: (id: string) => {
+      const start = new Date(editStartsAt);
+      return meetingsApi.reschedule(id, {
+        title: editTitle.trim(),
+        startsAt: start,
+        endsAt: new Date(start.getTime() + editMinutes * 60_000),
+      });
+    },
+    onSuccess: async (updated) => {
+      setEditing(false);
+      setSelected(updated);
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
   const disconnect = useMutation({
     mutationFn: meetingsApi.disconnectCalendar,
     onSuccess: async () => {
@@ -141,6 +169,7 @@ export function MeetingsPage() {
   const select = (meeting: MeetingDto | null): void => {
     setSelected(meeting);
     setConfirmingCancel(false);
+    setEditing(false);
   };
 
   const banner = params.get('calendar');
@@ -357,11 +386,76 @@ export function MeetingsPage() {
               >
                 Cancel meeting
               </button>
+              <button
+                className="btn btn--sm"
+                type="button"
+                onClick={() => {
+                  setEditTitle(selected.title);
+                  setEditStartsAt(toLocalInput(selected.startsAt));
+                  setEditMinutes(
+                    Math.max(
+                      5,
+                      Math.round(
+                        (new Date(selected.endsAt).getTime() -
+                          new Date(selected.startsAt).getTime()) /
+                          60_000,
+                      ),
+                    ),
+                  );
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>
               <button className="btn" type="button" onClick={() => select(null)}>
                 Close
               </button>
             </div>
           </div>
+
+          {editing ? (
+            <div className="stack" style={{ gap: 'var(--space-2)' }}>
+              <input
+                className="field__input"
+                aria-label="Meeting title"
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+              />
+              <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                <input
+                  className="field__input"
+                  type="datetime-local"
+                  aria-label="Meeting time"
+                  value={editStartsAt}
+                  onChange={(event) => setEditStartsAt(event.target.value)}
+                />
+                <input
+                  className="field__input"
+                  type="number"
+                  min={5}
+                  step={5}
+                  aria-label="Minutes"
+                  value={editMinutes}
+                  onChange={(event) => setEditMinutes(Number(event.target.value))}
+                  style={{ width: 90 }}
+                />
+                <button
+                  className="btn btn--primary btn--sm"
+                  disabled={editTitle.trim().length < 2 || editStartsAt === '' || edit.isPending}
+                  onClick={() => edit.mutate(selected.id)}
+                >
+                  {edit.isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn btn--ghost btn--sm" onClick={() => setEditing(false)}>
+                  Cancel
+                </button>
+              </div>
+              <p className="meta">
+                Everyone invited is told. The join link does not change.
+              </p>
+              {edit.error ? <ErrorNotice error={edit.error} /> : null}
+            </div>
+          ) : null}
 
           {confirmingCancel ? (
             <div
