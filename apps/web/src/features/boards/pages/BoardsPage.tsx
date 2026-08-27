@@ -1,7 +1,6 @@
 import { ROLE_RANK } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 import { useAuth } from '@/features/auth';
 import { queryKeys } from '@/shared/api/query-keys';
@@ -13,6 +12,7 @@ import { SkeletonCards, SkeletonRows } from '@/shared/components/Skeleton';
 import { pluralize } from '@/shared/lib/format';
 
 import { boardsApi } from '../api/boards.api';
+import { DepartmentPeek } from '../components/DepartmentPeek';
 
 export function BoardsPage() {
   const queryClient = useQueryClient();
@@ -20,6 +20,9 @@ export function BoardsPage() {
   const canEdit = user ? ROLE_RANK[user.role] >= ROLE_RANK.MEMBER : false;
 
   const [workspaceId, setWorkspaceId] = useState('');
+  // Which department is open below the cards. One at a time: two expanded
+  // panels push the second so far down it is off screen anyway.
+  const [peekId, setPeekId] = useState<string | null>(null);
 
   const workspaces = useQuery({
     queryKey: queryKeys.workspaces,
@@ -62,6 +65,9 @@ export function BoardsPage() {
   if (workspaces.error) return <ErrorNotice error={workspaces.error} />;
 
   const hasWorkspace = (workspaces.data?.length ?? 0) > 0;
+  // Switching workspace can leave the open department behind; resolving it from
+  // the current list rather than trusting the id keeps the panel honest.
+  const peek = boards.data?.find((board) => board.id === peekId) ?? null;
 
   return (
     <div className="stack" style={{ gap: 'var(--space-5)' }}>
@@ -133,17 +139,22 @@ export function BoardsPage() {
             }}
           >
             {boards.data?.map((board) => (
-              <Link
+              <button
                 key={board.id}
-                to={`/boards/${board.id}`}
+                type="button"
+                aria-expanded={peekId === board.id}
+                onClick={() => setPeekId((current) => (current === board.id ? null : board.id))}
                 className="card"
                 style={{
-                  textDecoration: 'none',
+                  textAlign: 'left',
+                  font: 'inherit',
                   color: 'inherit',
+                  cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 6,
                   padding: 'var(--space-4)',
+                  borderColor: peekId === board.id ? 'var(--accent)' : undefined,
                   transition: 'box-shadow var(--transition), border-color var(--transition)',
                 }}
                 onMouseEnter={(event) => {
@@ -152,7 +163,8 @@ export function BoardsPage() {
                 }}
                 onMouseLeave={(event) => {
                   event.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-                  event.currentTarget.style.borderColor = 'var(--line)';
+                  event.currentTarget.style.borderColor =
+                    peekId === board.id ? 'var(--accent)' : 'var(--line)';
                 }}
               >
                 <span className="row" style={{ justifyContent: 'space-between' }}>
@@ -168,8 +180,13 @@ export function BoardsPage() {
                   ) : null}
                 </span>
 
-                <span className="meta">{pluralize(board.itemCount, 'task')}</span>
-              </Link>
+                <span className="row" style={{ justifyContent: 'space-between' }}>
+                  <span className="meta">{pluralize(board.itemCount, 'task')}</span>
+                  <span aria-hidden="true" className="meta" style={{ fontSize: 10 }}>
+                    {peekId === board.id ? '▴' : '▾'}
+                  </span>
+                </span>
+              </button>
             ))}
 
             {canEdit ? (
@@ -182,6 +199,8 @@ export function BoardsPage() {
               />
             ) : null}
           </div>
+
+          {peek ? <DepartmentPeek boardId={peek.id} boardName={peek.name} /> : null}
 
           {createBoard.error ? <ErrorNotice error={createBoard.error} /> : null}
         </>

@@ -2,7 +2,9 @@ import type { Prisma } from '@prisma/client';
 
 import { prisma } from '@/database';
 
-const withCounts = { _count: { select: { items: true } } } as const;
+// Deleted tasks are still rows, so an unfiltered count claims a department
+// holds work it will not list. Everything that reads items filters on this.
+const withCounts = { _count: { select: { items: { where: { deletedAt: null } } } } } as const;
 
 export const boardsRepository = {
   listForWorkspace(workspaceId: string, scope: Prisma.BoardWhereInput = {}) {
