@@ -474,10 +474,29 @@ function CommentsTab({
   onSubmit: (body: string) => void;
 }) {
   const [draft, setDraft] = useState('');
+  // Who has been mentioned, so the plain text can be turned back into the
+  // machine format on the way out.
+  const [mentioned, setMentioned] = useState<MemberDto[]>([]);
 
-  /** Inserts the machine-readable mention the server parses. */
-  const mention = (member: MemberDto): void =>
-    setDraft((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@[${member.fullName}](${member.userId}) `);
+  /** Writes the name a person would write. The id is attached on submit. */
+  const mention = (member: MemberDto): void => {
+    setDraft((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}@${member.fullName} `);
+    setMentioned((current) =>
+      current.some((m) => m.userId === member.userId) ? current : [...current, member],
+    );
+  };
+
+  /**
+   * `@Name` becomes `@[Name](id)`, which is what the server reads. Longest
+   * names first, so "Sai Ganesh Kumar" is not half-matched by "Sai Ganesh".
+   */
+  const encode = (text: string): string =>
+    [...mentioned]
+      .sort((a, b) => b.fullName.length - a.fullName.length)
+      .reduce((body, member) => {
+        const escaped = member.fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return body.replace(new RegExp(`@${escaped}`, 'g'), `@[${member.fullName}](${member.userId})`);
+      }, text);
 
   return (
     <div className="stack">
@@ -529,8 +548,9 @@ function CommentsTab({
             className="btn btn--primary btn--sm"
             disabled={pending || draft.trim() === ''}
             onClick={() => {
-              onSubmit(draft.trim());
+              onSubmit(encode(draft.trim()));
               setDraft('');
+              setMentioned([]);
             }}
           >
             {pending ? 'Posting…' : 'Comment'}
