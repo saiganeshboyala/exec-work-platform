@@ -252,9 +252,9 @@ export function DashboardPage() {
             }}
           >
             {data.upcomingMeetings.map((meeting) => {
-              // Clicking a meeting should start it. Without a link there is
-              // nothing to start, so it opens in the calendar instead of
-              // doing nothing at all.
+              // Opens the meeting rather than the call: from there you can
+              // join, copy the link, move it or call it off. Going straight
+              // into the call took away every one of those.
               const inner = (
                 <>
                   <span
@@ -266,11 +266,6 @@ export function DashboardPage() {
                     }}
                   >
                     {meeting.title}
-                    {meeting.joinUrl ? (
-                      <span aria-hidden="true" style={{ marginLeft: 5, opacity: 0.7, fontSize: 11 }}>
-                        ↗
-                      </span>
-                    ) : null}
                   </span>
                   <span className="meta">{formatDateTime(meeting.startsAt)}</span>
                 </>
@@ -286,25 +281,13 @@ export function DashboardPage() {
 
               return (
                 <li key={meeting.id}>
-                  {meeting.joinUrl ? (
-                    <a
-                      href={meeting.joinUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={`Join ${meeting.title}`}
-                      style={style}
-                    >
-                      {inner}
-                    </a>
-                  ) : (
-                    <Link
-                      to={`/meetings?meeting=${meeting.id}`}
-                      title={`${meeting.title} — no join link yet, open it in the calendar`}
-                      style={style}
-                    >
-                      {inner}
-                    </Link>
-                  )}
+                  <Link
+                    to={`/meetings?meeting=${meeting.id}`}
+                    title={`Open ${meeting.title}`}
+                    style={style}
+                  >
+                    {inner}
+                  </Link>
                 </li>
               );
             })}
