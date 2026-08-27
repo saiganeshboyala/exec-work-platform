@@ -248,12 +248,63 @@ export function DashboardPage() {
               gap: 'var(--space-3)',
             }}
           >
-            {data.upcomingMeetings.map((meeting) => (
-              <li key={meeting.id}>
-                <p style={{ fontSize: 'var(--text-md)', fontWeight: 500 }}>{meeting.title}</p>
-                <p className="meta">{formatDateTime(meeting.startsAt)}</p>
-              </li>
-            ))}
+            {data.upcomingMeetings.map((meeting) => {
+              // Clicking a meeting should start it. Without a link there is
+              // nothing to start, so it opens in the calendar instead of
+              // doing nothing at all.
+              const inner = (
+                <>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: 'var(--text-md)',
+                      fontWeight: 500,
+                      color: 'var(--ink)',
+                    }}
+                  >
+                    {meeting.title}
+                    {meeting.joinUrl ? (
+                      <span aria-hidden="true" style={{ marginLeft: 5, opacity: 0.7, fontSize: 11 }}>
+                        ↗
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="meta">{formatDateTime(meeting.startsAt)}</span>
+                </>
+              );
+
+              const style = {
+                display: 'block',
+                textDecoration: 'none',
+                padding: 'var(--space-2)',
+                margin: 'calc(var(--space-2) * -1)',
+                borderRadius: 'var(--radius)',
+              } as const;
+
+              return (
+                <li key={meeting.id}>
+                  {meeting.joinUrl ? (
+                    <a
+                      href={meeting.joinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Join ${meeting.title}`}
+                      style={style}
+                    >
+                      {inner}
+                    </a>
+                  ) : (
+                    <Link
+                      to={`/meetings?meeting=${meeting.id}`}
+                      title={`${meeting.title} — no join link yet, open it in the calendar`}
+                      style={style}
+                    >
+                      {inner}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

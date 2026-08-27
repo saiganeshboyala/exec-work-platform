@@ -40,6 +40,12 @@ export interface ExecutiveDashboardDto {
   kpis: KpiDto[];
   portfolio: PortfolioRowDto[];
   decisionQueue: DecisionQueueRowDto[];
-  upcomingMeetings: Array<{ id: string; title: string; startsAt: string }>;
+  /** joinUrl is carried so the card can start the call, not just name it. */
+  upcomingMeetings: Array<{
+    id: string;
+    title: string;
+    startsAt: string;
+    joinUrl: string | null;
+  }>;
   generatedAt: string;
 }

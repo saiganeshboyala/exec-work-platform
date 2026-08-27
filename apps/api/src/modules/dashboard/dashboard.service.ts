@@ -115,6 +115,7 @@ export const dashboardService = {
       id: meeting.id,
       title: meeting.title,
       startsAt: meeting.startsAt,
+      joinUrl: meeting.joinUrl,
     }));
 
     return {
