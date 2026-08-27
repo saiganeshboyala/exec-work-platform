@@ -50,6 +50,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
   const [meetingMinutes, setMeetingMinutes] = useState(30);
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [newDepartment, setNewDepartment] = useState('');
+  const [newWorkspace, setNewWorkspace] = useState('');
   const [addingDepartment, setAddingDepartment] = useState(false);
 
   useEffect(() => {
@@ -83,6 +84,16 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
 
   // Creating a department here saves leaving the dialog just to make somewhere
   // for the task to live.
+  const createWorkspace = useMutation({
+    mutationFn: () => boardsApi.createWorkspace({ name: newWorkspace.trim() }),
+    onSuccess: async (workspace) => {
+      setNewWorkspace('');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
+      // Straight into the one just made, so the next field is the department.
+      setWorkspaceId(workspace.id);
+    },
+  });
+
   const createDepartment = useMutation({
     mutationFn: () => boardsApi.create({ workspaceId, name: newDepartment.trim(), isPortfolio: false }),
     onSuccess: async (board) => {
@@ -177,10 +188,41 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {(workspaces.data?.length ?? 0) === 0 ? (
-          <p className="meta" style={{ marginTop: 'var(--space-4)' }}>
-            Create a workspace and a department first — a task has to live somewhere.
-          </p>
+        {!workspaces.isPending && (workspaces.data?.length ?? 0) === 0 ? (
+          /* Nowhere to put a task yet. Offering the first step beats telling
+             somebody to go and find it. */
+          <div className="stack" style={{ marginTop: 'var(--space-4)', gap: 'var(--space-2)' }}>
+            <p className="meta">
+              A task lives in a department, and a department lives in a workspace. Name your
+              first workspace to get going.
+            </p>
+            <div className="row" style={{ gap: 'var(--space-2)' }}>
+              <input
+                className="field__input"
+                autoFocus
+                placeholder="e.g. Operations"
+                aria-label="New workspace name"
+                value={newWorkspace}
+                onChange={(event) => setNewWorkspace(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && newWorkspace.trim() !== '') {
+                    event.preventDefault();
+                    createWorkspace.mutate();
+                  }
+                }}
+                style={{ flex: 1, minWidth: 0 }}
+              />
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                disabled={newWorkspace.trim() === '' || createWorkspace.isPending}
+                onClick={() => createWorkspace.mutate()}
+              >
+                {createWorkspace.isPending ? 'Creating…' : 'Create workspace'}
+              </button>
+            </div>
+            {createWorkspace.error ? <ErrorNotice error={createWorkspace.error} /> : null}
+          </div>
         ) : (
           <div className="stack" style={{ marginTop: 'var(--space-4)' }}>
             <div className="field">

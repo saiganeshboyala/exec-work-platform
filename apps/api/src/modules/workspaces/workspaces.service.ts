@@ -2,7 +2,8 @@ import type { CreateWorkspaceInput, UpdateWorkspaceInput, WorkspaceDto } from '@
 
 import { AppError } from '@/common/errors';
 import type { AuthContext } from '@/common/types/express';
-import { workspaceFilter } from '@/modules/access';
+import { prisma } from '@/database';
+import { seesWholeOrganization, workspaceFilter } from '@/modules/access';
 import { activityService } from '@/modules/activity';
 
 import { workspacesRepository } from './workspaces.repository';
@@ -47,6 +48,19 @@ export const workspacesService = {
 
   async create(auth: AuthContext, input: CreateWorkspaceInput, requestId: string): Promise<WorkspaceDto> {
     const row = await workspacesRepository.create({ organizationId: auth.organizationId, ...input });
+
+    // Whoever made it can see it. Visibility here is granted, not implied, so
+    // without this a member creates a workspace and it disappears.
+    if (!seesWholeOrganization(auth)) {
+      await prisma.scopedAccess.create({
+        data: {
+          organizationId: auth.organizationId,
+          userId: auth.userId,
+          workspaceId: row.id,
+          role: auth.role,
+        },
+      });
+    }
 
     await activityService.record({
       organizationId: auth.organizationId,

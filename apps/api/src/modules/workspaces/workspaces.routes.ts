@@ -12,9 +12,11 @@ workspacesRouter.use(authenticate);
 
 workspacesRouter.get('/', authorize('VIEWER'), asyncHandler(workspacesController.list));
 
+// A member with no workspace has nowhere to put a department, and so no way
+// to raise a task at all. Renaming and deleting stay with managers.
 workspacesRouter.post(
   '/',
-  authorize('MANAGER'),
+  authorize('MEMBER'),
   validate(createWorkspaceSchema),
   asyncHandler(workspacesController.create),
 );
