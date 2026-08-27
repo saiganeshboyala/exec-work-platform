@@ -76,6 +76,9 @@ export function DashboardPage() {
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['items'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Deleting a task calls off the meetings about it, so the calendar is
+      // now wrong until it is refetched.
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
     },
   });
 

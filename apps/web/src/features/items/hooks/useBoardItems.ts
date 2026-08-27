@@ -24,6 +24,8 @@ export function useBoardItems(boardId: string) {
     await queryClient.invalidateQueries({ queryKey: key });
     // Todo counts these same rows.
     await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    // Deleting a task calls off the meetings about it.
+    await queryClient.invalidateQueries({ queryKey: ['meetings'] });
   };
 
   const update = useMutation({
