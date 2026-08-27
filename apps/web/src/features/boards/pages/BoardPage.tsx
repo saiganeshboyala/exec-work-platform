@@ -87,7 +87,10 @@ export function BoardPage() {
 
   const all = useMemo(() => query.data ?? [], [query.data]);
   const visible = useMemo(() => applyFilters(all, filters, user?.id), [all, filters, user?.id]);
-  const groups = useMemo(() => groupItems(visible, filters.groupBy), [visible, filters.groupBy]);
+  // Always one plain list: the tasks, or the composer if there are none.
+  // Deliberately ignores filters.groupBy - a saved view made before grouping was
+  // dropped would otherwise bring the status headings back with no way to leave.
+  const groups = useMemo(() => groupItems(visible, 'none'), [visible]);
 
   const openItem = all.find((item) => item.id === openItemId) ?? null;
   const meetingItem = all.find((item) => item.id === meetingItemId) ?? null;

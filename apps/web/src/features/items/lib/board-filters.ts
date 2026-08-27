@@ -12,7 +12,7 @@ export const DEFAULT_FILTERS: BoardFilters = {
   priority: 'any',
   status: 'any',
   due: 'any',
-  groupBy: 'status',
+  groupBy: 'none',
   hideDone: false,
 };
 

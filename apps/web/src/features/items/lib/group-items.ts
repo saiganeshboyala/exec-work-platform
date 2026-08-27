@@ -67,6 +67,20 @@ export function applyFilters(
 }
 
 export function groupItems(items: ItemDto[], groupBy: BoardFilters['groupBy']): ItemGroup[] {
+  // One plain list with one place to add a task. An empty label tells the table
+  // to skip its heading, so nothing announces a group that does not exist.
+  if (groupBy === 'none') {
+    return [
+      {
+        key: 'all',
+        label: '',
+        color: 'var(--ink)',
+        items,
+        createStatus: 'NOT_STARTED',
+      },
+    ];
+  }
+
   if (groupBy === 'status') {
     return STATUS_ORDER.map((status) => ({
       key: status,

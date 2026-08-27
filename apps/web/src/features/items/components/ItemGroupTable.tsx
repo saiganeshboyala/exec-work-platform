@@ -52,8 +52,13 @@ export function ItemGroupTable({
   const done = group.items.filter((item) => item.status === 'DONE').length;
   const progress = group.items.length === 0 ? 0 : Math.round((done / group.items.length) * 100);
 
+  // Ungrouped: there is nothing to name, count or collapse, so the heading row
+  // would just be chrome above a single list.
+  const heading = group.label !== '';
+
   return (
     <section>
+      {heading ? (
       <div className="row" style={{ padding: '0 2px var(--space-2)', gap: 'var(--space-3)' }}>
         <button
           type="button"
@@ -99,11 +104,12 @@ export function ItemGroupTable({
           </span>
         ) : null}
       </div>
+      ) : null}
 
       {open ? (
         <div
           className="card card--flush"
-          style={{ borderLeft: `3px solid ${group.color}` }}
+          style={heading ? { borderLeft: `3px solid ${group.color}` } : undefined}
         >
           {/* Column headings only earn their space above actual rows; an empty
               group collapses to its composer instead of repeating them. */}

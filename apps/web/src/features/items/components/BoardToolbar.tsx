@@ -1,6 +1,5 @@
 import { PRIORITIES, type ItemStatus, type MemberDto } from '@ewp/contracts';
 
-import { SegmentedControl } from '@/shared/components/SegmentedControl';
 import { PRIORITY_TONE, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import {
@@ -8,7 +7,6 @@ import {
   isFiltered,
   type BoardFilters,
   type DueWindow,
-  type GroupBy,
 } from '../lib/board-filters';
 
 const selectStyle = {
@@ -133,19 +131,6 @@ export function BoardToolbar({
         </button>
       ) : null}
 
-      <span className="toolbar__divider" />
-
-      <SegmentedControl<GroupBy>
-        ariaLabel="Group tasks by"
-        value={filters.groupBy}
-        onChange={(groupBy) => set('groupBy', groupBy)}
-        options={[
-          { value: 'status', label: 'Status' },
-          { value: 'owner', label: 'Owner' },
-          { value: 'priority', label: 'Priority' },
-          { value: 'due', label: 'Due' },
-        ]}
-      />
     </div>
   );
 }

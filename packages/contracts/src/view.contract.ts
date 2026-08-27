@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ITEM_STATUSES, PRIORITIES } from './enums';
 
-export const GROUP_BY = ['status', 'owner', 'priority', 'due'] as const;
+export const GROUP_BY = ['none', 'status', 'owner', 'priority', 'due'] as const;
 export type GroupBy = (typeof GROUP_BY)[number];
 
 export const DUE_WINDOWS = ['any', 'overdue', 'today', 'week', 'none'] as const;
@@ -18,7 +18,7 @@ export const boardFiltersSchema = z.object({
   priority: z.enum([...PRIORITIES, 'any']).default('any'),
   status: z.enum([...ITEM_STATUSES, 'any']).default('any'),
   due: z.enum(DUE_WINDOWS).default('any'),
-  groupBy: z.enum(GROUP_BY).default('status'),
+  groupBy: z.enum(GROUP_BY).default('none'),
   hideDone: z.boolean().default(false),
 });
 export type BoardFilters = z.infer<typeof boardFiltersSchema>;
