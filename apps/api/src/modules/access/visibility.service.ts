@@ -1,4 +1,3 @@
-import { ROLE_RANK } from '@ewp/contracts';
 import type { Prisma } from '@prisma/client';
 
 import type { AuthContext } from '@/common/types/express';
@@ -7,16 +6,17 @@ import { prisma } from '@/database';
 /**
  * Who sees the whole organisation, and who sees only their own corner of it.
  *
- * MANAGER and above run the business: they need the full picture, which is what
- * the portfolio rollup is for. Below that, people see the work they are on -
- * the boards they have been granted, plus anything assigned to them, plus the
- * meetings they attend. Nothing else.
+ * The owner, and nobody else. Administering the tenant is a separate thing from
+ * reading everyone's work: an admin still manages people, roles and settings -
+ * those are gated on role, not on this - but sees only the departments, tasks
+ * and meetings they created or were put on, exactly like a member. Same for a
+ * manager.
  *
  * Every list AND every single-record lookup goes through here. Filtering only
  * the lists would leave the ids guessable through a direct URL.
  */
 export function seesWholeOrganization(auth: AuthContext): boolean {
-  return ROLE_RANK[auth.role] >= ROLE_RANK.MANAGER;
+  return auth.role === 'OWNER';
 }
 
 /**
