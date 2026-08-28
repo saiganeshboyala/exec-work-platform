@@ -19,7 +19,7 @@ import { boardsService } from '@/modules/boards';
 import { notificationsService } from '@/modules/notifications';
 import { workspacesService } from '@/modules/workspaces';
 
-import { endFor, occurrenceStarts } from './recurrence';
+import { endFor, occurrenceStarts, toRRule } from './recurrence';
 
 type MeetingRow = Awaited<ReturnType<typeof loadMeeting>>;
 
@@ -227,6 +227,9 @@ export const meetingsService = {
       const event = await calendarProvider.createEvent({
         title: input.title,
         description: `${agendaItemIds.length} agenda items pulled from the board.`,
+        // The rule covers the whole series, so attendees are invited once for
+        // all of it rather than once per occurrence.
+        ...(input.repeat ? { recurrence: [toRRule(input.repeat)] } : {}),
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         location: input.location,
@@ -268,24 +271,25 @@ export const meetingsService = {
       requestId,
     });
 
-    // The repeats. Each is a meeting in its own right, sharing the attendees and
-    // agenda of the first, so one week can be moved or called off on its own.
+    // The repeats. Rows of their own so a single week can be moved or called
+    // off, but all pointing at the one recurring event created above - creating
+    // an event each would invite everybody once per occurrence.
     if (input.repeat) {
       const [, ...laterStarts] = occurrenceStarts(input.startsAt, input.repeat);
+      const seriesEventId = (await loadMeeting(meeting.id))?.calendarEventId ?? null;
 
       for (const startsAt of laterStarts) {
-        const endsAt = endFor(startsAt, input.startsAt, input.endsAt);
-
-        const repeatMeeting = await prisma.meeting.create({
+        await prisma.meeting.create({
           data: {
             workspaceId: input.workspaceId,
             title: input.title,
             startsAt,
-            endsAt,
+            endsAt: endFor(startsAt, input.startsAt, input.endsAt),
             location: input.location,
-            joinUrl: input.joinUrl ?? null,
+            joinUrl: meeting.joinUrl ?? input.joinUrl ?? null,
             createdById: auth.userId,
             seriesId,
+            calendarEventId: seriesEventId,
             attendees: { createMany: { data: input.attendeeIds.map((userId) => ({ userId })) } },
             agenda: {
               createMany: {
@@ -297,40 +301,7 @@ export const meetingsService = {
               },
             },
           },
-          include: {
-            attendees: { include: { user: { select: { id: true, email: true, fullName: true } } } },
-          },
         });
-
-        try {
-          const event = await calendarProvider.createEvent({
-            title: input.title,
-            description: `${agendaItemIds.length} agenda items pulled from the board.`,
-            startsAt,
-            endsAt,
-            location: input.location,
-            attendeeEmails: repeatMeeting.attendees.map((a) => a.user.email),
-            organizerUserId: auth.userId,
-          });
-
-          if (event.externalId || event.joinUrl) {
-            await prisma.meeting.update({
-              where: { id: repeatMeeting.id },
-              data: {
-                calendarEventId: event.externalId || null,
-                ...(event.joinUrl ? { joinUrl: event.joinUrl } : {}),
-              },
-            });
-          }
-        } catch (error) {
-          // One failed occurrence must not lose the ones already made.
-          logger.error(
-            { err: error, meetingId: repeatMeeting.id },
-            'Calendar sync failed for a repeat; meeting kept',
-          );
-          calendarWarning ??=
-            error instanceof Error ? error.message : 'Calendar sync failed for a repeat';
-        }
       }
     }
 
@@ -387,15 +358,23 @@ export const meetingsService = {
 
     if (meeting.calendarEventId) {
       try {
-        await calendarProvider.updateEvent(
-          meeting.calendarEventId,
-          {
-            title: input.title ?? meeting.title,
-            startsAt: input.startsAt,
-            endsAt: input.endsAt,
-          },
-          meeting.createdById,
-        );
+        const moved = {
+          title: input.title ?? meeting.title,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+        };
+
+        if (meeting.seriesId) {
+          // Moving the shared event would move every occurrence with it.
+          await calendarProvider.updateInstance(
+            meeting.calendarEventId,
+            meeting.startsAt,
+            moved,
+            meeting.createdById,
+          );
+        } else {
+          await calendarProvider.updateEvent(meeting.calendarEventId, moved, meeting.createdById);
+        }
       } catch (error) {
         logger.error({ err: error, meetingId }, 'Calendar move failed; meeting moved here');
         // The meeting has already moved, so this is a warning rather than a
@@ -442,7 +421,7 @@ export const meetingsService = {
         id: meetingId,
         workspace: { organizationId: auth.organizationId, deletedAt: null },
       },
-      select: { seriesId: true },
+      include: { attendees: { select: { userId: true } } },
     });
     if (!meeting) throw AppError.notFound('Meeting');
 
@@ -450,6 +429,10 @@ export const meetingsService = {
     if (!meeting.seriesId) {
       await this.cancel(auth, meetingId, requestId);
       return { cancelled: 1 };
+    }
+
+    if (meeting.createdById !== auth.userId && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+      throw AppError.forbidden('Only the organiser or a manager can cancel this meeting');
     }
 
     const siblings = await prisma.meeting.findMany({
@@ -460,20 +443,42 @@ export const meetingsService = {
         workspace: { organizationId: auth.organizationId, deletedAt: null },
       },
       select: { id: true },
-      orderBy: { startsAt: 'asc' },
     });
 
-    let cancelled = 0;
-    for (const sibling of siblings) {
-      // One occurrence somebody cannot touch must not stop the rest.
-      await this.cancel(auth, sibling.id, requestId)
-        .then(() => {
-          cancelled += 1;
-        })
-        .catch(() => undefined);
+    await prisma.meeting.updateMany({
+      where: { id: { in: siblings.map((sibling) => sibling.id) } },
+      data: { cancelledAt: new Date() },
+    });
+
+    // One delete, not one per occurrence: the whole series is a single event in
+    // the calendar, so everybody is told once rather than a dozen times.
+    if (meeting.calendarEventId) {
+      try {
+        await calendarProvider.cancelEvent(meeting.calendarEventId, meeting.createdById);
+      } catch (error) {
+        logger.error({ err: error, meetingId }, 'Calendar cancellation failed; series cancelled');
+      }
     }
 
-    return { cancelled };
+    await notificationsService.notify({
+      organizationId: auth.organizationId,
+      userIds: meeting.attendees.map((a) => a.userId).filter((id) => id !== auth.userId),
+      title: 'Meetings cancelled',
+      body: `${meeting.title} · ${siblings.length} remaining meetings`,
+      url: '/meetings',
+    });
+
+    await activityService.record({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      entityType: 'Meeting',
+      entityId: meetingId,
+      verb: 'DELETED',
+      before: { title: meeting.title, cancelled: siblings.length, series: true },
+      requestId,
+    });
+
+    return { cancelled: siblings.length };
   },
 
   /**
@@ -509,7 +514,17 @@ export const meetingsService = {
     // Google should not undo that.
     if (meeting.calendarEventId) {
       try {
-        await calendarProvider.cancelEvent(meeting.calendarEventId, meeting.createdById);
+        if (meeting.seriesId) {
+          // Every occurrence shares one recurring event, so deleting it would
+          // call off the entire series. Only this instance is cancelled.
+          await calendarProvider.cancelInstance(
+            meeting.calendarEventId,
+            meeting.startsAt,
+            meeting.createdById,
+          );
+        } else {
+          await calendarProvider.cancelEvent(meeting.calendarEventId, meeting.createdById);
+        }
       } catch (error) {
         logger.error({ err: error, meetingId }, 'Calendar cancellation failed; meeting cancelled');
       }

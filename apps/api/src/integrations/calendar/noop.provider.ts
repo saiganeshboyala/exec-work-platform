@@ -15,6 +15,14 @@ export class NoopCalendarProvider implements CalendarProvider {
     /* nothing mirrored, nothing to move */
   }
 
+  async cancelInstance(): Promise<void> {
+    /* nothing mirrored, nothing to call off */
+  }
+
+  async updateInstance(): Promise<void> {
+    /* nothing mirrored, nothing to move */
+  }
+
   async cancelEvent(_externalId: string, _organizerUserId?: string): Promise<void> {
     /* nothing to cancel */
   }

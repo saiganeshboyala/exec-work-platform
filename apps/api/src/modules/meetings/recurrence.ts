@@ -57,3 +57,31 @@ export function occurrenceStarts(first: Date, repeat: RepeatInput): Date[] {
 export function endFor(start: Date, firstStart: Date, firstEnd: Date): Date {
   return new Date(start.getTime() + (firstEnd.getTime() - firstStart.getTime()));
 }
+
+const RRULE_DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+/**
+ * The same pattern as an RFC 5545 rule, so the calendar can hold the series as
+ * one recurring event instead of one event per occurrence.
+ *
+ * That distinction is the difference between an attendee receiving a single
+ * invitation and receiving one per week, and between the organiser getting one
+ * acceptance and getting one per week per person.
+ *
+ * COUNT includes the first occurrence, and a rule's start is always its first
+ * instance even when it does not match BYDAY - both of which match how
+ * occurrenceStarts builds the local rows, so the two never disagree.
+ */
+export function toRRule(repeat: RepeatInput): string {
+  if (repeat.frequency === 'DAILY') return `RRULE:FREQ=DAILY;COUNT=${repeat.count}`;
+
+  const days =
+    repeat.frequency === 'WEEKDAYS'
+      ? ['MO', 'TU', 'WE', 'TH', 'FR']
+      : repeat.frequency === 'CUSTOM'
+        ? [...new Set(repeat.days)].sort().map((day) => RRULE_DAYS[day] as string)
+        : null;
+
+  if (days === null) return `RRULE:FREQ=WEEKLY;COUNT=${repeat.count}`;
+  return `RRULE:FREQ=WEEKLY;BYDAY=${days.join(',')};COUNT=${repeat.count}`;
+}

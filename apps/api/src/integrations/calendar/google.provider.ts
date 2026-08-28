@@ -232,6 +232,9 @@ export class GoogleCalendarProvider implements CalendarProvider {
         start: { dateTime: input.startsAt.toISOString() },
         end: { dateTime: input.endsAt.toISOString() },
         attendees: input.attendeeEmails.map((email) => ({ email })),
+        // Present for a repeat: Google then owns the whole series as one
+        // event, and invites everybody once instead of once per occurrence.
+        ...(input.recurrence?.length ? { recurrence: input.recurrence } : {}),
         conferenceData: {
           createRequest: {
             requestId: randomUUID(),
@@ -298,6 +301,100 @@ export class GoogleCalendarProvider implements CalendarProvider {
       logger.error({ status: response.status, detail }, 'Google event update failed');
       throw AppError.badRequest(`Google Calendar rejected the change (${response.status})`);
     }
+  }
+
+  /**
+   * Finds one occurrence of a recurring event by the time it was originally due
+   * to start. Google gives each instance its own id, and that id is what has to
+   * be patched to touch a single week.
+   */
+  private async findInstanceId(
+    externalId: string,
+    originalStartsAt: Date,
+    token: string,
+  ): Promise<string | null> {
+    const url = new URL(`${CALENDAR_API}/calendars/primary/events/${externalId}/instances`);
+    // A minute either side: enough to match the occurrence, narrow enough not
+    // to catch its neighbours.
+    url.searchParams.set('timeMin', new Date(originalStartsAt.getTime() - 60_000).toISOString());
+    url.searchParams.set('timeMax', new Date(originalStartsAt.getTime() + 60_000).toISOString());
+
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok) {
+      logger.error(
+        { status: response.status, externalId },
+        'Could not list the instances of a recurring event',
+      );
+      return null;
+    }
+
+    const body = (await response.json()) as { items?: Array<{ id: string }> };
+    return body.items?.[0]?.id ?? null;
+  }
+
+  private async patchInstance(
+    externalId: string,
+    originalStartsAt: Date,
+    body: Record<string, unknown>,
+    organizerUserId: string | undefined,
+    what: string,
+  ): Promise<void> {
+    if (!organizerUserId) throw AppError.internal('Google Calendar needs to know whose event it is');
+
+    const token = await accessTokenFor(organizerUserId);
+    const instanceId = await this.findInstanceId(externalId, originalStartsAt, token);
+    if (!instanceId) {
+      logger.error({ externalId, originalStartsAt }, `No instance found to ${what}`);
+      return;
+    }
+
+    const url = new URL(`${CALENDAR_API}/calendars/primary/events/${instanceId}`);
+    url.searchParams.set('sendUpdates', 'all');
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      logger.error({ status: response.status, detail, instanceId }, `Google refused to ${what}`);
+      throw AppError.badRequest(`Google Calendar rejected the change (${response.status})`);
+    }
+  }
+
+  async cancelInstance(
+    externalId: string,
+    originalStartsAt: Date,
+    organizerUserId?: string,
+  ): Promise<void> {
+    await this.patchInstance(
+      externalId,
+      originalStartsAt,
+      { status: 'cancelled' },
+      organizerUserId,
+      'cancel one occurrence',
+    );
+  }
+
+  async updateInstance(
+    externalId: string,
+    originalStartsAt: Date,
+    input: { title: string; startsAt: Date; endsAt: Date },
+    organizerUserId?: string,
+  ): Promise<void> {
+    await this.patchInstance(
+      externalId,
+      originalStartsAt,
+      {
+        summary: input.title,
+        start: { dateTime: input.startsAt.toISOString() },
+        end: { dateTime: input.endsAt.toISOString() },
+      },
+      organizerUserId,
+      'move one occurrence',
+    );
   }
 
   async cancelEvent(externalId: string, organizerUserId?: string): Promise<void> {

@@ -69,8 +69,22 @@ export function MeetingRow({
   });
 
   const cancelAll = useMutation({
-    mutationFn: async (ids: string[]) => {
-      for (const id of ids) await meetingsApi.cancel(id);
+    mutationFn: async (meetings: Array<{ id: string; seriesId: string | null }>) => {
+      // A repeat is one recurring event in the calendar, so the series endpoint
+      // calls it off with a single notice. Cancelling them one by one would
+      // email every attendee once per occurrence.
+      const series = new Set(
+        meetings.map((meeting) => meeting.seriesId).filter((id): id is string => id !== null),
+      );
+
+      for (const seriesId of series) {
+        const first = meetings.find((meeting) => meeting.seriesId === seriesId);
+        if (first) await meetingsApi.cancelSeries(first.id);
+      }
+
+      for (const meeting of meetings.filter((m) => m.seriesId === null)) {
+        await meetingsApi.cancel(meeting.id);
+      }
     },
     onSuccess: async () => {
       setConfirmingAll(false);
@@ -228,7 +242,11 @@ export function MeetingRow({
                 className="btn btn--sm"
                 disabled={cancelAll.isPending}
                 style={{ borderColor: 'var(--blocked)', color: 'var(--blocked)' }}
-                onClick={() => cancelAll.mutate(upcoming.map((meeting) => meeting.id))}
+                onClick={() =>
+                  cancelAll.mutate(
+                    upcoming.map((meeting) => ({ id: meeting.id, seriesId: meeting.seriesId })),
+                  )
+                }
               >
                 {cancelAll.isPending ? 'Cancelling…' : 'Yes, cancel them'}
               </button>

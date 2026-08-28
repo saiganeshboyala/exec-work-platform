@@ -6,6 +6,11 @@ export interface CalendarEventInput {
   location?: string;
   attendeeEmails: string[];
   /**
+   * RFC 5545 rules. One event carrying these is a recurring meeting: attendees
+   * are invited once for the whole series rather than once per occurrence.
+   */
+  recurrence?: string[];
+  /**
    * Whose calendar the event belongs to. Providers that act on behalf of a
    * person (Google, Microsoft) need this; the no-op provider ignores it.
    */
@@ -31,4 +36,20 @@ export interface CalendarProvider {
     organizerUserId?: string,
   ): Promise<void>;
   cancelEvent(externalId: string, organizerUserId?: string): Promise<void>;
+  /**
+   * One occurrence of a recurring event, addressed by the time it was
+   * originally due to start. Cancelling or moving a single week must not
+   * disturb the rest of the series - or re-invite anyone to it.
+   */
+  cancelInstance(
+    externalId: string,
+    originalStartsAt: Date,
+    organizerUserId?: string,
+  ): Promise<void>;
+  updateInstance(
+    externalId: string,
+    originalStartsAt: Date,
+    input: Pick<CalendarEventInput, 'title' | 'startsAt' | 'endsAt'>,
+    organizerUserId?: string,
+  ): Promise<void>;
 }
