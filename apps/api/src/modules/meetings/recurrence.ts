@@ -1,6 +1,47 @@
 import type { RepeatInput } from '@ewp/contracts';
 
 /**
+ * The wall-clock reading in a zone, carried in a Date whose UTC fields hold it.
+ * Working in these makes "the next Tuesday" mean the user's Tuesday rather than
+ * the server's, which are different days for anyone whose offset crosses
+ * midnight - an 02:00 meeting in Delhi is the previous evening in UTC.
+ */
+function wallClock(instant: Date, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant);
+
+  const read = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+
+  // Some environments render midnight as hour 24.
+  const hour = read('hour') % 24;
+
+  return new Date(
+    Date.UTC(read('year'), read('month') - 1, read('day'), hour, read('minute'), read('second')),
+  );
+}
+
+/** How far the zone is from UTC at that moment, daylight saving included. */
+function offsetMs(instant: Date, timeZone: string): number {
+  return wallClock(instant, timeZone).getTime() - instant.getTime();
+}
+
+/** The instant at which a zone reads that wall clock. */
+function fromWallClock(wall: Date, timeZone: string): Date {
+  const firstGuess = new Date(wall.getTime() - offsetMs(wall, timeZone));
+  // One pass settles a guess that landed on the wrong side of a clock change.
+  return new Date(wall.getTime() - offsetMs(firstGuess, timeZone));
+}
+
+/**
  * The start times for a repeating meeting, the first one included.
  *
  * Days are stepped with setDate rather than by adding milliseconds, so an
@@ -11,7 +52,7 @@ import type { RepeatInput } from '@ewp/contracts';
  * impossible pattern cannot spin: only 7 days are ever searched per occurrence,
  * which is enough to find the next matching weekday.
  */
-export function occurrenceStarts(first: Date, repeat: RepeatInput): Date[] {
+export function occurrenceStarts(first: Date, repeat: RepeatInput, timeZone: string): Date[] {
   const wanted =
     repeat.frequency === 'WEEKDAYS'
       ? [1, 2, 3, 4, 5]
@@ -20,34 +61,36 @@ export function occurrenceStarts(first: Date, repeat: RepeatInput): Date[] {
         : null;
 
   const starts: Date[] = [];
-  const cursor = new Date(first);
+  // Stepped as wall clock in the organiser's zone, so every occurrence keeps
+  // their time of day and lands on the weekday they meant.
+  const cursor = wallClock(first, timeZone);
 
   // A pattern the first meeting does not itself match still starts from it:
   // the organiser picked that moment deliberately.
-  starts.push(new Date(cursor));
+  starts.push(new Date(first));
 
   while (starts.length < repeat.count) {
     if (repeat.frequency === 'WEEKLY') {
-      cursor.setDate(cursor.getDate() + 7);
-      starts.push(new Date(cursor));
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      starts.push(fromWallClock(cursor, timeZone));
       continue;
     }
 
     if (wanted === null) {
-      cursor.setDate(cursor.getDate() + 1);
-      starts.push(new Date(cursor));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      starts.push(fromWallClock(cursor, timeZone));
       continue;
     }
 
     // Walk forward to the next day the pattern allows.
     let stepped = 0;
     do {
-      cursor.setDate(cursor.getDate() + 1);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
       stepped += 1;
-    } while (!wanted.includes(cursor.getDay()) && stepped < 7);
+    } while (!wanted.includes(cursor.getUTCDay()) && stepped < 7);
 
-    if (!wanted.includes(cursor.getDay())) break;
-    starts.push(new Date(cursor));
+    if (!wanted.includes(cursor.getUTCDay())) break;
+    starts.push(fromWallClock(cursor, timeZone));
   }
 
   return starts;

@@ -276,7 +276,11 @@ export const meetingsService = {
     // off, but all pointing at the one recurring event created above - creating
     // an event each would invite everybody once per occurrence.
     if (input.repeat) {
-      const [, ...laterStarts] = occurrenceStarts(input.startsAt, input.repeat);
+      const [, ...laterStarts] = occurrenceStarts(
+        input.startsAt,
+        input.repeat,
+        input.timeZone ?? 'UTC',
+      );
 
       // Re-read: the calendar wrote the event id and the Meet link onto the row
       // a moment ago, and the object created before that call knows neither.
