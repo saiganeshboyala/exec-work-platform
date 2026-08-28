@@ -124,8 +124,15 @@ export async function itemFilter(auth: AuthContext): Promise<Prisma.ItemWhereInp
   };
 }
 
-/** Restricted users see only meetings they are actually invited to. */
+/**
+ * Meetings you are invited to, and meetings you called. The second half
+ * matters: an organiser is not automatically an attendee, so without it
+ * somebody could schedule a meeting and then not find it in their own
+ * calendar.
+ */
 export function meetingFilter(auth: AuthContext): Prisma.MeetingWhereInput {
   if (seesWholeOrganization(auth)) return {};
-  return { attendees: { some: { userId: auth.userId } } };
+  return {
+    OR: [{ attendees: { some: { userId: auth.userId } } }, { createdById: auth.userId }],
+  };
 }
