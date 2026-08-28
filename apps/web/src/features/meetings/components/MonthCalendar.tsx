@@ -49,6 +49,11 @@ export function MonthCalendar({
                 // Six of these plus the weekday header have to fit a laptop
                 // screen without scrolling; 96 put the last week below the fold.
                 minHeight: 72,
+                // A grid item will not shrink below its widest unbreakable
+                // child, and the chips do not wrap. Without this, one long
+                // meeting title widens its column and pushes the last days of
+                // the week off the screen.
+                minWidth: 0,
                 padding: 5,
                 borderBottom: '1px solid var(--line)',
                 borderRight: '1px solid var(--line)',
@@ -80,6 +85,7 @@ export function MonthCalendar({
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 2,
+                  minWidth: 0,
                   maxHeight: 44,
                   overflowY: 'auto',
                 }}
@@ -107,6 +113,10 @@ export function MonthCalendar({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      // Ellipsis only happens once the chip is allowed to be
+                      // narrower than its text.
+                      maxWidth: '100%',
+                      minWidth: 0,
                       // Arriving from a task, the meeting has to be findable.
                       outline: isSelected ? '2px solid var(--accent)' : 'none',
                       outlineOffset: 1,
