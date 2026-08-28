@@ -276,7 +276,12 @@ export const meetingsService = {
     // an event each would invite everybody once per occurrence.
     if (input.repeat) {
       const [, ...laterStarts] = occurrenceStarts(input.startsAt, input.repeat);
-      const seriesEventId = (await loadMeeting(meeting.id))?.calendarEventId ?? null;
+
+      // Re-read: the calendar wrote the event id and the Meet link onto the row
+      // a moment ago, and the object created before that call knows neither.
+      const first = await loadMeeting(meeting.id);
+      const seriesEventId = first?.calendarEventId ?? null;
+      const seriesJoinUrl = first?.joinUrl ?? null;
 
       for (const startsAt of laterStarts) {
         await prisma.meeting.create({
@@ -286,7 +291,9 @@ export const meetingsService = {
             startsAt,
             endsAt: endFor(startsAt, input.startsAt, input.endsAt),
             location: input.location,
-            joinUrl: meeting.joinUrl ?? input.joinUrl ?? null,
+            // The whole series is one event, so every occurrence joins on the
+            // same link the first one was given.
+            joinUrl: seriesJoinUrl,
             createdById: auth.userId,
             seriesId,
             calendarEventId: seriesEventId,
