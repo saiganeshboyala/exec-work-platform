@@ -427,7 +427,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
     if (!organizerUserId) return;
 
     const token = await accessTokenFor(organizerUserId);
-    const response = await fetch(`${CALENDAR_API}/calendars/primary/events/${externalId}`, {
+
+    const url = new URL(`${CALENDAR_API}/calendars/primary/events/${externalId}`);
+    // Google does not tell anybody by default when an event is deleted, so
+    // without this the meeting simply disappears from their calendar and the
+    // first they know of it is the empty slot.
+    url.searchParams.set('sendUpdates', 'all');
+
+    const response = await fetch(url, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
