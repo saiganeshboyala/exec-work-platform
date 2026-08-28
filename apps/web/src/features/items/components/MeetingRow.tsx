@@ -1,4 +1,3 @@
-import type { MeetingDto } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -16,10 +15,13 @@ function toLocalInput(iso: string): string {
 }
 
 /**
- * Every meeting booked about this task, not only the next one: a repeating
- * series is a dozen of them, and calling off one week is a different act from
- * calling off the lot. Rescheduling patches the existing calendar event, so the
- * link people already hold keeps working.
+ * The next meeting about this task, and what you can do to it. Only the next
+ * one: a repeating series is dozens of identical rows, and reading them was
+ * never the point - the questions are "when is the next" and "how do I stop
+ * them", which the count and Cancel all answer between them.
+ *
+ * Rescheduling patches the existing calendar event, so the link people already
+ * hold keeps working.
  */
 export function MeetingRow({
   itemId,
@@ -31,7 +33,7 @@ export function MeetingRow({
   onSchedule?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const [startsAt, setStartsAt] = useState('');
   const [minutes, setMinutes] = useState(30);
   const [confirmingAll, setConfirmingAll] = useState(false);
@@ -56,7 +58,7 @@ export function MeetingRow({
       });
     },
     onSuccess: async () => {
-      setEditingId(null);
+      setEditing(false);
       await refresh();
     },
   });
@@ -79,10 +81,14 @@ export function MeetingRow({
   if (meetings.isPending) return <span className="meta">Loading…</span>;
   if (meetings.error) return <ErrorNotice error={meetings.error} />;
 
-  const all = [...meetings.data].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const upcoming = all.filter((meeting) => new Date(meeting.startsAt) >= new Date());
+  // Past meetings happened; they are not something to join, move or call off.
+  const upcoming = [...meetings.data]
+    .filter((meeting) => new Date(meeting.startsAt) >= new Date())
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
-  if (all.length === 0) {
+  const next = upcoming[0];
+
+  if (!next) {
     return (
       <div className="row" style={{ gap: 'var(--space-2)' }}>
         <span className="meta">No meeting scheduled</span>
@@ -95,62 +101,54 @@ export function MeetingRow({
     );
   }
 
-  const row = (meeting: MeetingDto) => {
-    const past = new Date(meeting.startsAt) < new Date();
-
-    if (editingId === meeting.id) {
-      return (
-        <div key={meeting.id} className="stack" style={{ gap: 6 }}>
-          <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <input
-              className="field__input"
-              type="datetime-local"
-              aria-label="New meeting time"
-              value={startsAt}
-              onChange={(event) => setStartsAt(event.target.value)}
-            />
-            <input
-              className="field__input"
-              type="number"
-              min={5}
-              step={5}
-              aria-label="Minutes"
-              value={minutes}
-              onChange={(event) => setMinutes(Number(event.target.value))}
-              style={{ width: 84 }}
-            />
-            <button
-              className="btn btn--primary btn--sm"
-              disabled={startsAt === '' || minutes <= 0 || reschedule.isPending}
-              onClick={() => reschedule.mutate(meeting.id)}
-            >
-              {reschedule.isPending ? 'Moving…' : 'Move it'}
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => setEditingId(null)}>
-              Cancel
-            </button>
-          </div>
-          <p className="meta">Everyone invited is told. The join link does not change.</p>
-          {reschedule.error ? <ErrorNotice error={reschedule.error} /> : null}
-        </div>
-      );
-    }
-
+  if (editing) {
     return (
-      <div
-        key={meeting.id}
-        className="row"
-        style={{ gap: 'var(--space-2)', flexWrap: 'wrap', opacity: past ? 0.6 : 1 }}
-      >
-        <span style={{ fontSize: 'var(--text-base)', minWidth: 132 }}>
-          {formatDateTime(meeting.startsAt)}
-        </span>
+      <div className="stack" style={{ gap: 6 }}>
+        <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <input
+            className="field__input"
+            type="datetime-local"
+            aria-label="New meeting time"
+            value={startsAt}
+            onChange={(event) => setStartsAt(event.target.value)}
+          />
+          <input
+            className="field__input"
+            type="number"
+            min={5}
+            step={5}
+            aria-label="Minutes"
+            value={minutes}
+            onChange={(event) => setMinutes(Number(event.target.value))}
+            style={{ width: 84 }}
+          />
+          <button
+            className="btn btn--primary btn--sm"
+            disabled={startsAt === '' || minutes <= 0 || reschedule.isPending}
+            onClick={() => reschedule.mutate(next.id)}
+          >
+            {reschedule.isPending ? 'Moving…' : 'Move it'}
+          </button>
+          <button className="btn btn--ghost btn--sm" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+        <p className="meta">Everyone invited is told. The join link does not change.</p>
+        {reschedule.error ? <ErrorNotice error={reschedule.error} /> : null}
+      </div>
+    );
+  }
 
-        {meeting.joinUrl ? (
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 'var(--text-md)' }}>{formatDateTime(next.startsAt)}</span>
+
+        {next.joinUrl ? (
           <>
             <a
               className="badge"
-              href={meeting.joinUrl}
+              href={next.joinUrl}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -163,7 +161,7 @@ export function MeetingRow({
               <CalendarIcon size={11} /> Join
               <span aria-hidden="true">↗</span>
             </a>
-            <CopyButton value={meeting.joinUrl} />
+            <CopyButton value={next.joinUrl} />
           </>
         ) : (
           <span className="meta">No join link</span>
@@ -174,8 +172,16 @@ export function MeetingRow({
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {
-                setStartsAt(toLocalInput(meeting.startsAt));
-                setEditingId(meeting.id);
+                setStartsAt(toLocalInput(next.startsAt));
+                setMinutes(
+                  Math.max(
+                    5,
+                    Math.round(
+                      (new Date(next.endsAt).getTime() - new Date(next.startsAt).getTime()) / 60_000,
+                    ),
+                  ),
+                );
+                setEditing(true);
               }}
             >
               Edit
@@ -184,23 +190,22 @@ export function MeetingRow({
               className="btn btn--ghost btn--sm"
               style={{ color: 'var(--blocked)' }}
               disabled={cancel.isPending}
-              onClick={() => cancel.mutate(meeting.id)}
+              onClick={() => cancel.mutate(next.id)}
             >
               Cancel
             </button>
           </>
         ) : null}
       </div>
-    );
-  };
 
-  return (
-    <div className="stack" style={{ gap: 8 }}>
-      {all.map(row)}
+      <span className="meta">
+        {next.title}
+        {/* Says there are more without listing them. */}
+        {upcoming.length > 1 ? ` · ${upcoming.length - 1} more after this` : ''}
+      </span>
 
       {cancel.error ? <ErrorNotice error={cancel.error} /> : null}
 
-      {/* Only worth offering once calling them off one at a time is tedious. */}
       {canEdit && upcoming.length > 1 ? (
         confirmingAll ? (
           <div
@@ -217,7 +222,7 @@ export function MeetingRow({
             <p style={{ fontSize: 'var(--text-md)', color: 'var(--blocked)', fontWeight: 600 }}>
               Cancel all {upcoming.length} upcoming meetings?
             </p>
-            <p className="meta">Everyone invited is told. Past meetings are left alone.</p>
+            <p className="meta">Everyone invited is told. Ones already held are left alone.</p>
             <div className="row" style={{ gap: 'var(--space-2)' }}>
               <button
                 className="btn btn--sm"
