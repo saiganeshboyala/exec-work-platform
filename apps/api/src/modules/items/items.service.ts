@@ -238,18 +238,29 @@ export const itemsService = {
       // Only meetings this task was actually put on. Being swept onto an agenda
       // for being overdue does not make the meeting about it.
       where: { itemId: id, chosen: true, meeting: { cancelledAt: null } },
-      select: { meetingId: true },
+      select: { meetingId: true, meeting: { select: { seriesId: true } } },
     });
 
-    for (const { meetingId } of agendas) {
+    // A repeat is one row per occurrence here but one event in the calendar.
+    // Cancelling them one at a time would email every attendee once per week.
+    const doneSeries = new Set<string>();
+
+    for (const { meetingId, meeting } of agendas) {
       const remaining = await prisma.meetingAgendaItem.count({
         where: { meetingId, chosen: true, itemId: { not: id }, item: { deletedAt: null } },
       });
 
-      if (remaining === 0) {
-        await meetingsService.cancel(auth, meetingId, requestId).catch(() => undefined);
-      } else {
+      if (remaining > 0) {
         await prisma.meetingAgendaItem.deleteMany({ where: { meetingId, itemId: id } });
+        continue;
+      }
+
+      if (meeting.seriesId) {
+        if (doneSeries.has(meeting.seriesId)) continue;
+        doneSeries.add(meeting.seriesId);
+        await meetingsService.cancelSeries(auth, meetingId, requestId).catch(() => undefined);
+      } else {
+        await meetingsService.cancel(auth, meetingId, requestId).catch(() => undefined);
       }
     }
 
