@@ -75,6 +75,9 @@ export async function apiRequest<T>(
 
   const response = await fetch(url, {
     method: options.method ?? 'GET',
+    // The refresh token is an httpOnly cookie; without this the browser would
+    // not attach it and every session would end at the first expiry.
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

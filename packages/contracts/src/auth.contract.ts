@@ -48,7 +48,11 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const refreshSchema = z.object({ refreshToken: z.string().min(1) });
+/**
+ * The token normally arrives as an httpOnly cookie the browser sends on its
+ * own, so the body is optional. Kept for non-browser clients.
+ */
+export const refreshSchema = z.object({ refreshToken: z.string().min(1).optional() });
 export type RefreshInput = z.infer<typeof refreshSchema>;
 
 export const acceptInvitationSchema = z.object({
@@ -63,3 +67,10 @@ export interface AuthTokens {
   refreshToken: string;
   expiresIn: number;
 }
+
+/**
+ * What a browser actually receives. The refresh token is withheld and sent as
+ * an httpOnly cookie instead, so no script on the page can read it - which is
+ * the whole point of not keeping it in localStorage.
+ */
+export type ClientAuthTokens = Omit<AuthTokens, 'refreshToken'>;

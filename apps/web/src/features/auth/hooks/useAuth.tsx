@@ -19,18 +19,17 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null);
 
 /**
- * The refresh token is the long-lived credential, so it is the only thing kept
- * in storage. The access token stays in memory and is re-minted on load, which
- * keeps a stolen storage dump from being directly usable against the API.
+ * Nothing about the session is kept in storage. The refresh token is an
+ * httpOnly cookie the browser holds and no script can read, and the access
+ * token lives in memory for the life of the page - so an XSS on this origin
+ * finds nothing to steal and cannot outlive the tab.
  */
-const REFRESH_KEY = 'ewp.refreshToken';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUserDto | null>(null);
   const [status, setStatus] = useState<AuthState['status']>('loading');
 
   const clearSession = useCallback(() => {
-    localStorage.removeItem(REFRESH_KEY);
     setAccessToken(null);
     setUser(null);
     setStatus('anonymous');
@@ -40,16 +39,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // calls this when a request comes back 401, so an expired access token is
   // renewed under the request rather than ending the session.
   const renew = useCallback(async (): Promise<string | null> => {
-    const stored = localStorage.getItem(REFRESH_KEY);
-    if (!stored) return null;
-
     try {
-      const tokens = await authApi.refresh(stored);
-      localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+      const tokens = await authApi.refresh();
       setAccessToken(tokens.accessToken);
       return tokens.accessToken;
     } catch {
-      // The refresh token is spent or revoked; this session really is over.
+      // No cookie, or it is spent or revoked; this session really is over.
       return null;
     }
   }, []);
@@ -58,16 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUnauthenticatedHandler(clearSession);
     setSessionRefresher(renew);
 
-    const stored = localStorage.getItem(REFRESH_KEY);
-    if (!stored) {
-      setStatus('anonymous');
-      return;
-    }
-
+    // There is nothing readable to check for a session, so ask: the cookie
+    // either buys a new access token or it does not.
     void (async () => {
       try {
-        const tokens = await authApi.refresh(stored);
-        localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+        const tokens = await authApi.refresh();
         setAccessToken(tokens.accessToken);
         setUser(await authApi.me());
         setStatus('authenticated');
@@ -81,15 +71,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (input: LoginInput) => {
     const { user: signedIn, tokens } = await authApi.login(input);
-    localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
     setAccessToken(tokens.accessToken);
     setUser(signedIn);
     setStatus('authenticated');
   }, []);
 
   const signOut = useCallback(async () => {
-    const stored = localStorage.getItem(REFRESH_KEY);
-    if (stored) await authApi.logout(stored).catch(() => undefined);
+    // Tells the server to revoke the token and clear the cookie.
+    await authApi.logout().catch(() => undefined);
     clearSession();
   }, [clearSession]);
 
