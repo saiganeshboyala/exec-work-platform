@@ -10,6 +10,8 @@ export interface CalendarEventInput {
    * are invited once for the whole series rather than once per occurrence.
    */
   recurrence?: string[];
+  /** IANA zone the times are meant in. Required by Google for a recurring event. */
+  timeZone?: string;
   /**
    * Whose calendar the event belongs to. Providers that act on behalf of a
    * person (Google, Microsoft) need this; the no-op provider ignores it.

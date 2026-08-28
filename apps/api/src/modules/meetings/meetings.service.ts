@@ -230,6 +230,7 @@ export const meetingsService = {
         // The rule covers the whole series, so attendees are invited once for
         // all of it rather than once per occurrence.
         ...(input.repeat ? { recurrence: [toRRule(input.repeat)] } : {}),
+        timeZone: input.timeZone,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         location: input.location,
@@ -369,6 +370,7 @@ export const meetingsService = {
           title: input.title ?? meeting.title,
           startsAt: input.startsAt,
           endsAt: input.endsAt,
+          timeZone: input.timeZone,
         };
 
         if (meeting.seriesId) {

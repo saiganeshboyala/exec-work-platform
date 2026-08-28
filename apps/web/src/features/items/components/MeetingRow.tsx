@@ -5,6 +5,7 @@ import { meetingsApi } from '@/features/meetings';
 import { CopyButton } from '@/shared/components/CopyButton';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { CalendarIcon } from '@/shared/components/icons';
+import { browserTimeZone } from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
 
 /** A datetime-local value from an ISO string, in the reader's own timezone. */
@@ -55,6 +56,7 @@ export function MeetingRow({
       return meetingsApi.reschedule(id, {
         startsAt: start,
         endsAt: new Date(start.getTime() + minutes * 60_000),
+        timeZone: browserTimeZone(),
       });
     },
     onSuccess: async () => {

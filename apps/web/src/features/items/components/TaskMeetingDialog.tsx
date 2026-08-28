@@ -6,6 +6,7 @@ import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { ApiError } from '@/shared/api/http-client';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { WarningIcon } from '@/shared/components/icons';
+import { browserTimeZone } from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
 
 /** Next whole hour, in the format datetime-local expects (local, no zone). */
@@ -91,6 +92,7 @@ export function TaskMeetingDialog({
         itemIds: [item.id],
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
         ...(repeat ? { repeat } : {}),
+        timeZone: browserTimeZone(),
       }),
     onSuccess: async (meeting) => {
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });

@@ -11,7 +11,7 @@ import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { SegmentedControl } from '@/shared/components/SegmentedControl';
 import { SkeletonRows } from '@/shared/components/Skeleton';
-import { rangeFor, weekGrid } from '@/shared/lib/calendar';
+import { browserTimeZone, rangeFor, weekGrid } from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
 
 import { meetingsApi } from '../api/meetings.api';
@@ -156,6 +156,7 @@ export function MeetingsPage() {
         title: editTitle.trim(),
         startsAt: start,
         endsAt: new Date(start.getTime() + editMinutes * 60_000),
+        timeZone: browserTimeZone(),
       });
     },
     onSuccess: async (updated) => {

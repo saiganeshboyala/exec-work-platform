@@ -19,6 +19,14 @@ const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 /** Calendar write access plus the email address, so we can show who is connected. */
 const SCOPES = [CALENDAR_SCOPE, 'openid', 'email'];
 
+/**
+ * Google needs a zone to expand a recurrence rule against, and refuses the
+ * event without one. UTC is the honest fallback when the caller did not say:
+ * the instant is still correct, only the rule's idea of "every day at 09:00"
+ * would follow UTC rather than the organiser's clock.
+ */
+const DEFAULT_TIME_ZONE = 'UTC';
+
 interface TokenResponse {
   access_token: string;
   refresh_token?: string;
@@ -229,8 +237,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
         summary: input.title,
         description: input.description,
         location: input.location,
-        start: { dateTime: input.startsAt.toISOString() },
-        end: { dateTime: input.endsAt.toISOString() },
+        start: {
+          dateTime: input.startsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
+        end: {
+          dateTime: input.endsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
         attendees: input.attendeeEmails.map((email) => ({ email })),
         // Present for a repeat: Google then owns the whole series as one
         // event, and invites everybody once instead of once per occurrence.
@@ -274,7 +288,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
 
   async updateEvent(
     externalId: string,
-    input: { title: string; startsAt: Date; endsAt: Date },
+    input: { title: string; startsAt: Date; endsAt: Date; timeZone?: string },
     organizerUserId?: string,
   ): Promise<void> {
     if (!organizerUserId) {
@@ -291,8 +305,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         summary: input.title,
-        start: { dateTime: input.startsAt.toISOString() },
-        end: { dateTime: input.endsAt.toISOString() },
+        start: {
+          dateTime: input.startsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
+        end: {
+          dateTime: input.endsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
       }),
     });
 
@@ -381,7 +401,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
   async updateInstance(
     externalId: string,
     originalStartsAt: Date,
-    input: { title: string; startsAt: Date; endsAt: Date },
+    input: { title: string; startsAt: Date; endsAt: Date; timeZone?: string },
     organizerUserId?: string,
   ): Promise<void> {
     await this.patchInstance(
@@ -389,8 +409,14 @@ export class GoogleCalendarProvider implements CalendarProvider {
       originalStartsAt,
       {
         summary: input.title,
-        start: { dateTime: input.startsAt.toISOString() },
-        end: { dateTime: input.endsAt.toISOString() },
+        start: {
+          dateTime: input.startsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
+        end: {
+          dateTime: input.endsAt.toISOString(),
+          timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
+        },
       },
       organizerUserId,
       'move one occurrence',

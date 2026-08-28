@@ -61,3 +61,16 @@ export function sameDay(a: Date, b: Date): boolean {
     a.getDate() === b.getDate()
   );
 }
+
+/**
+ * The organiser's IANA zone, as the browser reports it. Sent with a meeting so
+ * a recurring event expands against their clock: "every weekday at 09:00" has
+ * to mean 09:00 somewhere, and the server has no way to know where.
+ */
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}

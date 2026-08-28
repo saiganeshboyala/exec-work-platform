@@ -6,6 +6,7 @@ import { boardsApi } from '@/features/boards';
 import { ApiError } from '@/shared/api/http-client';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
+import { browserTimeZone } from '@/shared/lib/calendar';
 
 import { meetingsApi } from '../api/meetings.api';
 
@@ -67,6 +68,7 @@ export function ScheduleMeetingForm({
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
         ...(trackAsTask && taskBoardId !== '' ? { createTaskOnBoardId: taskBoardId } : {}),
         ...(repeat ? { repeat } : {}),
+        timeZone: browserTimeZone(),
       });
     },
     onSuccess: async (meeting) => {

@@ -15,6 +15,7 @@ import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { membersApi } from '@/features/members';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
+import { browserTimeZone } from '@/shared/lib/calendar';
 import { PRIORITY_TONE, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import { itemsApi } from '../api/items.api';
@@ -138,6 +139,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
             attendeeIds: attendeeIds.length > 0 ? attendeeIds : [currentUserId],
             itemIds: [item.id],
             ...(meetingRepeat ? { repeat: meetingRepeat } : {}),
+            timeZone: browserTimeZone(),
           });
         } catch (error) {
           // The task exists and is the thing that was asked for; a failed

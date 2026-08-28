@@ -45,6 +45,12 @@ export const scheduleMeetingSchema = z
     createTaskOnBoardId: z.string().uuid().optional(),
     /** Absent for a one-off, which is the common case. */
     repeat: repeatSchema.optional(),
+    /**
+     * The organiser's IANA zone, e.g. Asia/Kolkata. A recurring event has to be
+     * expanded somewhere - "every weekday at 09:00" means nothing without a
+     * zone - and Google refuses the event without one.
+     */
+    timeZone: z.string().max(100).optional(),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: 'The end time must be after the start time',
@@ -62,6 +68,7 @@ export const rescheduleMeetingSchema = z
     title: z.string().min(2).max(200).trim().optional(),
     startsAt: z.coerce.date(),
     endsAt: z.coerce.date(),
+    timeZone: z.string().max(100).optional(),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: 'The end time must be after the start time',
