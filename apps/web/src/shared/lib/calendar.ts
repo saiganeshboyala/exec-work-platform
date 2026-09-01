@@ -67,12 +67,15 @@ export function sameDay(a: Date, b: Date): boolean {
  * be. Everyone types and reads scheduling times in this zone, so a standup is
  * at the same hour of the working day for the team it belongs to.
  *
- * Named rather than an offset because US Central changes its clocks twice a
- * year; the zone knows when, a fixed -6 would be wrong for half of it.
+ * Central Standard all year, deliberately. Regina keeps UTC-6 and the name CST
+ * through the summer, where Chicago would move to CDT - so an hour booked here
+ * is the same hour in June as in January, and never renames itself. The
+ * trade-off is that from March to November this reads an hour behind the clocks
+ * people in Chicago are actually looking at.
  */
-export const SCHEDULING_TIME_ZONE = 'America/Chicago';
+export const SCHEDULING_TIME_ZONE = 'America/Regina';
 
-/** How that zone is worth showing to somebody, e.g. "CST" or "CDT". */
+/** Always "CST" for this zone, read from it rather than written by hand. */
 export function schedulingZoneLabel(at: Date = new Date()): string {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
