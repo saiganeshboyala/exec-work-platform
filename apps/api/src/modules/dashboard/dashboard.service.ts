@@ -8,7 +8,7 @@ import type {
 
 import type { AuthContext } from '@/common/types/express';
 import { daysBetween, deriveHealth } from '@/common/utils';
-import { boardFilter } from '@/modules/access';
+import { boardFilter, itemFilter } from '@/modules/access';
 import { meetingsService } from '@/modules/meetings';
 
 import { dashboardRepository } from './dashboard.repository';
@@ -24,11 +24,12 @@ export const dashboardService = {
   async build(auth: AuthContext, query: DashboardQuery): Promise<ExecutiveDashboardDto> {
     const now = new Date();
     // The rollup must only count what this person is allowed to see, or the
-    // headline numbers become a side channel onto boards they cannot open.
+    // headline numbers become a side channel onto work they cannot open.
     const boards = await dashboardRepository.boardsWithItems(
       auth.organizationId,
       query.workspaceId,
       await boardFilter(auth),
+      await itemFilter(auth),
     );
 
     const portfolio: PortfolioRowDto[] = [];

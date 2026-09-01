@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { useAuth } from '@/features/auth';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { SegmentedControl } from '@/shared/components/SegmentedControl';
 
@@ -18,6 +19,10 @@ type Tab = 'approvals' | 'workload' | 'automations' | 'fields' | 'access' | 'aud
  */
 export function AdminPage() {
   const [tab, setTab] = useState<Tab>('approvals');
+  const { user } = useAuth();
+  // Workload is a tally of everybody's open work, so it is the owner's alone.
+  // Shown to an admin it would only ever render the API's refusal.
+  const seesWorkload = user?.role === 'OWNER';
 
   return (
     <div className="stack" style={{ gap: 'var(--space-5)' }}>
@@ -31,7 +36,7 @@ export function AdminPage() {
             onChange={setTab}
             options={[
               { value: 'approvals', label: 'Approvals' },
-              { value: 'workload', label: 'Workload' },
+              ...(seesWorkload ? [{ value: 'workload' as const, label: 'Workload' }] : []),
               { value: 'automations', label: 'Automations' },
               { value: 'fields', label: 'Fields' },
               { value: 'access', label: 'Access' },
@@ -42,7 +47,7 @@ export function AdminPage() {
       />
 
       {tab === 'approvals' ? <ApprovalsPanel /> : null}
-      {tab === 'workload' ? <WorkloadPanel /> : null}
+      {tab === 'workload' && seesWorkload ? <WorkloadPanel /> : null}
       {tab === 'automations' ? <AutomationsPanel /> : null}
       {tab === 'fields' ? <FieldsPanel /> : null}
       {tab === 'access' ? <AccessPanel /> : null}

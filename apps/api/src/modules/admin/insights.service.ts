@@ -2,6 +2,8 @@ import type { ActivityDto, WorkloadRowDto } from '@ewp/contracts';
 
 import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
+import { itemFilter } from '@/modules/access';
+import { boardsService } from '@/modules/boards';
 
 /** Open work counts for more, and urgent work counts for more again. */
 const PRIORITY_WEIGHT = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 5 } as const;
@@ -80,13 +82,23 @@ export const insightsService = {
     }));
   },
 
-  /** A board as CSV, for the board pack that always gets asked for. */
+  /**
+   * A board as CSV, for the board pack that always gets asked for.
+   *
+   * Both checks matter. getOrFail is the only thing standing between a guessed
+   * board id and somebody else's department; the item filter then keeps the
+   * export to the rows the caller could have read on screen anyway. Without
+   * them an export was a way round every rule the UI applies.
+   */
   async exportBoardCsv(auth: AuthContext, boardId: string): Promise<string> {
+    await boardsService.getOrFail(auth, boardId);
+
     const items = await prisma.item.findMany({
       where: {
         boardId,
         deletedAt: null,
         board: { workspace: { organizationId: auth.organizationId } },
+        ...(await itemFilter(auth)),
       },
       include: { owner: { select: { fullName: true } } },
       orderBy: [{ status: 'asc' }, { dueDate: 'asc' }],

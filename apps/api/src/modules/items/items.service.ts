@@ -285,11 +285,15 @@ export const itemsService = {
     patch: BulkUpdateItemsInput['patch'],
     requestId: string,
   ): Promise<{ updated: number }> {
+    // Scoped like every other read. Filtered by organization alone, a list of
+    // ids was enough to edit a colleague's work without ever being able to see
+    // it - ids that the item API hands out freely on anything shared.
     const owned = await prisma.item.findMany({
       where: {
         id: { in: itemIds },
         deletedAt: null,
         board: { deletedAt: null, workspace: { organizationId: auth.organizationId } },
+        ...(await itemFilter(auth)),
       },
       select: { id: true, status: true, ownerId: true },
     });
@@ -352,6 +356,7 @@ export const itemsService = {
         id: { in: itemIds },
         deletedAt: null,
         board: { deletedAt: null, workspace: { organizationId: auth.organizationId } },
+        ...(await itemFilter(auth)),
       },
       select: { id: true },
     });
@@ -363,6 +368,25 @@ export const itemsService = {
       where: { id: { in: ids } },
       data: { deletedAt: new Date() },
     });
+
+    // Deleting tasks one at a time calls off the meetings about them; doing it
+    // in bulk used to leave those meetings in everybody's calendar for good.
+    const orphaned = await prisma.meetingAgendaItem.findMany({
+      where: { itemId: { in: ids }, chosen: true, meeting: { cancelledAt: null } },
+      select: { meetingId: true },
+      distinct: ['meetingId'],
+    });
+
+    const nothingLeft: string[] = [];
+
+    for (const { meetingId } of orphaned) {
+      const remaining = await prisma.meetingAgendaItem.count({
+        where: { meetingId, chosen: true, item: { deletedAt: null } },
+      });
+      if (remaining === 0) nothingLeft.push(meetingId);
+    }
+
+    await meetingsService.cancelMany(auth, nothingLeft, requestId);
 
     await Promise.all(
       ids.map((id) =>

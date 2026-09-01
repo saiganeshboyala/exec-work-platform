@@ -3,7 +3,7 @@ import type { BoardDto, CreateBoardInput, UpdateBoardInput } from '@ewp/contract
 import { AppError } from '@/common/errors';
 import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
-import { boardFilter, seesWholeOrganization } from '@/modules/access';
+import { boardFilter, itemFilter, seesWholeOrganization } from '@/modules/access';
 import { activityService } from '@/modules/activity';
 import { meetingsService } from '@/modules/meetings';
 import { workspacesService } from '@/modules/workspaces';
@@ -27,18 +27,34 @@ function toDto(row: BoardRow): BoardDto {
 export const boardsService = {
   async listForWorkspace(auth: AuthContext, workspaceId: string): Promise<BoardDto[]> {
     await workspacesService.getOrFail(auth, workspaceId);
-    return (await boardsRepository.listForWorkspace(workspaceId, await boardFilter(auth))).map(toDto);
+    return (
+      await boardsRepository.listForWorkspace(
+        workspaceId,
+        await boardFilter(auth),
+        await itemFilter(auth),
+      )
+    ).map(toDto);
   },
 
   /** Used by anything that has to offer a choice of department. */
   async listAll(auth: AuthContext): Promise<BoardDto[]> {
-    return (await boardsRepository.listForOrganization(auth.organizationId, await boardFilter(auth)))
-      .map(toDto);
+    return (
+      await boardsRepository.listForOrganization(
+        auth.organizationId,
+        await boardFilter(auth),
+        await itemFilter(auth),
+      )
+    ).map(toDto);
   },
 
   async getOrFail(auth: AuthContext, id: string) {
     // Scoped here as well: a list filter alone leaves ids reachable by URL.
-    const row = await boardsRepository.findById(auth.organizationId, id, await boardFilter(auth));
+    const row = await boardsRepository.findById(
+      auth.organizationId,
+      id,
+      await boardFilter(auth),
+      await itemFilter(auth),
+    );
     if (!row) throw AppError.notFound('Board');
     return row;
   },

@@ -12,6 +12,7 @@ export const dashboardRepository = {
     organizationId: string,
     workspaceId?: string,
     scope: Prisma.BoardWhereInput = {},
+    visibleItems: Prisma.ItemWhereInput = {},
   ) {
     return prisma.board.findMany({
       where: {
@@ -23,7 +24,11 @@ export const dashboardRepository = {
         id: true,
         name: true,
         items: {
-          where: { deletedAt: null },
+          // Both filters are needed, and they are not the same question. A
+          // department is visible to anyone holding one task in it; that must
+          // not hand them the other twenty. Without this the rollup reports
+          // titles, owners and due dates from work the reader cannot open.
+          where: { deletedAt: null, ...visibleItems },
           select: {
             id: true,
             title: true,
@@ -38,12 +43,13 @@ export const dashboardRepository = {
     });
   },
 
-  completedSince(organizationId: string, since: Date) {
+  completedSince(organizationId: string, since: Date, visibleItems: Prisma.ItemWhereInput = {}) {
     return prisma.item.count({
       where: {
         deletedAt: null,
         completedAt: { gte: since },
         board: { deletedAt: null, workspace: { organizationId, deletedAt: null } },
+        ...visibleItems,
       },
     });
   },

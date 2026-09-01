@@ -66,9 +66,11 @@ adminRouter.post(
 
 /* ---- Insights ----------------------------------------------------------- */
 
+// A tally of everybody's open work, which is exactly what an admin is not
+// supposed to see. Whole-organisation reports belong to the owner alone.
 adminRouter.get(
   '/workload',
-  authorize('ADMIN'),
+  authorize('OWNER'),
   asyncHandler(async (req: Request, res: Response) => {
     const workspaceId = typeof req.query.workspaceId === 'string' ? req.query.workspaceId : undefined;
     sendOk(res, await insightsService.workload(requireAuth(req), workspaceId));
