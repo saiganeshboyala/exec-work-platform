@@ -14,25 +14,22 @@
  * Times are typed, listed and drawn in this zone, so a standup is at the same
  * hour of the working day for everyone who looks at it.
  *
- * Central Standard all year, deliberately. Regina keeps UTC-6 and the name CST
- * through the summer, where Chicago would move to CDT - so an hour booked here
- * is the same hour in June as in January, and never renames itself. The
- * trade-off is that from March to November this reads an hour behind the clocks
- * people in Chicago are actually looking at.
+ * US Central, following the clock change. A fixed -6 was tried and was wrong
+ * for two thirds of the year: it read an hour behind the clocks people in
+ * Central actually keep, and a 09:00 booked here arrived in the calendar
+ * invitation as 10:00. The zone knows when the clocks move; we do not.
  */
-export const SCHEDULING_TIME_ZONE = 'America/Regina';
+export const SCHEDULING_TIME_ZONE = 'America/Chicago';
 
-/** Always "CST" for this zone, read from it rather than written by hand. */
-export function schedulingZoneLabel(at: Date = new Date()): string {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: SCHEDULING_TIME_ZONE,
-      timeZoneName: 'short',
-    }).formatToParts(at);
-    return parts.find((part) => part.type === 'timeZoneName')?.value ?? 'CST';
-  } catch {
-    return 'CST';
-  }
+/**
+ * What to call that zone on screen.
+ *
+ * "Central" rather than CST or CDT. The zone is one clock all year, but its
+ * abbreviation changes in March and November, and a label that renames itself
+ * twice a year reads like the time has moved when it has not.
+ */
+export function schedulingZoneLabel(): string {
+  return 'Central';
 }
 
 /**

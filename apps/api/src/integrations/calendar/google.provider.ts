@@ -24,7 +24,7 @@ const SCOPES = [CALENDAR_SCOPE, 'openid', 'email'];
  * event without one. This is the clock the deployment books against, used when
  * a caller does not name one.
  */
-const DEFAULT_TIME_ZONE = 'America/Regina';
+const DEFAULT_TIME_ZONE = 'America/Chicago';
 
 interface TokenResponse {
   access_token: string;

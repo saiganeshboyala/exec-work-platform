@@ -54,7 +54,7 @@ export function formatDateTime(iso: string): string {
 
 /** The same, with the zone named - for anywhere the time stands on its own. */
 export function formatDateTimeWithZone(iso: string): string {
-  return `${formatDateTime(iso)} ${schedulingZoneLabel(new Date(iso))}`;
+  return `${formatDateTime(iso)} ${schedulingZoneLabel()}`;
 }
 
 /** Just the clock part of an instant, in the scheduling zone. */

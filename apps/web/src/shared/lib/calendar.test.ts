@@ -14,27 +14,29 @@ import {
 /**
  * None of these may depend on the machine's own clock: the whole point of the
  * zone work is that a colleague in London and one in Dallas see one calendar.
+ *
+ * September is daylight saving in Central (UTC-5); January is not (UTC-6). Both
+ * appear below, because a fixed offset passed the summer cases by accident and
+ * still had the app reading an hour behind the wall clock.
  */
 describe('the calendar runs on the scheduling zone', () => {
-  it('stays CST in summer as well as winter', () => {
-    expect(schedulingZoneLabel(new Date('2026-01-15T18:00:00Z'))).toBe('CST');
-    expect(schedulingZoneLabel(new Date('2026-07-15T18:00:00Z'))).toBe('CST');
+  it('is called Central, whatever the season', () => {
+    expect(schedulingZoneLabel()).toBe('Central');
   });
 
-  it('reads an instant as the clock Central would show', () => {
-    // 15:00Z is 09:00 at UTC-6.
-    const wall = inSchedulingZone(new Date('2026-09-15T15:00:00Z'));
+  it('reads an instant as the clock Central would show, in both halves of the year', () => {
+    const summer = inSchedulingZone(new Date('2026-09-15T14:00:00Z'));
+    const winter = inSchedulingZone(new Date('2026-01-15T15:00:00Z'));
 
-    expect(wall.getUTCFullYear()).toBe(2026);
-    expect(wall.getUTCMonth()).toBe(8);
-    expect(wall.getUTCDate()).toBe(15);
-    expect(wall.getUTCHours()).toBe(9);
+    expect(summer.getUTCDate()).toBe(15);
+    expect(summer.getUTCHours()).toBe(9);
+    expect(winter.getUTCHours()).toBe(9);
   });
 
   it('keeps a late meeting on the day Central calls it', () => {
     // 21:00 on the 15th in Central is already the 16th in UTC, and the 16th
     // for a browser in London. It belongs in the 15th's cell.
-    const late = new Date('2026-09-16T03:00:00Z');
+    const late = new Date('2026-09-16T02:00:00Z');
     const fifteenth = new Date(Date.UTC(2026, 8, 15));
     const sixteenth = new Date(Date.UTC(2026, 8, 16));
 
@@ -45,8 +47,14 @@ describe('the calendar runs on the scheduling zone', () => {
   it('fetches exactly the Central day, midnight to midnight', () => {
     const [from, to] = rangeFor('day', new Date(Date.UTC(2026, 8, 15)));
 
-    expect(from.toISOString()).toBe('2026-09-15T06:00:00.000Z');
-    expect(to.toISOString()).toBe('2026-09-16T05:59:59.999Z');
+    expect(from.toISOString()).toBe('2026-09-15T05:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-09-16T04:59:59.999Z');
+  });
+
+  it('shifts that window by an hour in winter, as the clocks do', () => {
+    const [from] = rangeFor('day', new Date(Date.UTC(2026, 0, 15)));
+
+    expect(from.toISOString()).toBe('2026-01-15T06:00:00.000Z');
   });
 
   it('draws six Monday-first weeks whatever the month', () => {
@@ -68,12 +76,20 @@ describe('the calendar runs on the scheduling zone', () => {
     expect(week[6]?.getUTCDate()).toBe(20);
   });
 
+  it('books the hour somebody typed, not an hour either side of it', () => {
+    // The bug this pins: under a fixed -6, a September 09:00 was stored as
+    // 15:00Z and went out in the invitation as 10:00 Central.
+    expect(schedulingInputToDate('2026-09-15T09:00').toISOString()).toBe(
+      '2026-09-15T14:00:00.000Z',
+    );
+    expect(schedulingInputToDate('2026-01-15T09:00').toISOString()).toBe(
+      '2026-01-15T15:00:00.000Z',
+    );
+  });
+
   it('round-trips what somebody types in the form', () => {
     const typed = '2026-09-15T09:00';
-    const instant = schedulingInputToDate(typed);
 
-    // Nine in the morning Central is 15:00Z, not nine wherever the typist sits.
-    expect(instant.toISOString()).toBe('2026-09-15T15:00:00.000Z');
-    expect(dateToSchedulingInput(instant)).toBe(typed);
+    expect(dateToSchedulingInput(schedulingInputToDate(typed))).toBe(typed);
   });
 });

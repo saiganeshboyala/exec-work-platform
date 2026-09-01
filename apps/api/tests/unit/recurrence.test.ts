@@ -199,32 +199,27 @@ describe('occurrences do not depend on the server clock', () => {
   });
 });
 
-describe('the scheduling zone is Central Standard the whole year', () => {
-  const named = (date: Date): string =>
-    new Intl.DateTimeFormat('en-US', {
+describe('the scheduling zone follows the Central clock', () => {
+  const hourOf = (date: Date): string =>
+    new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
       timeZone: SCHEDULING_TIME_ZONE,
-      timeZoneName: 'short',
-    })
-      .formatToParts(date)
-      .find((part) => part.type === 'timeZoneName')!.value;
+    }).format(date);
 
-  it('never renames itself to CDT over the summer', () => {
-    // Chicago would read CDT for the July date. The team asked for one clock all
-    // year, so the zone is a Central one that does not move: Saskatchewan.
-    expect(named(new Date(Date.UTC(2026, 0, 15, 18)))).toBe('CST');
-    expect(named(new Date(Date.UTC(2026, 6, 15, 18)))).toBe('CST');
+  it('is the zone people in Central actually keep', () => {
+    // A fixed -6 was tried here and read an hour behind the wall clock from
+    // March to November, which is most of the year.
+    const summer = new Date(Date.UTC(2026, 6, 15, 14));
+    const winter = new Date(Date.UTC(2026, 0, 15, 15));
+
+    expect(hourOf(summer)).toBe('09:00');
+    expect(hourOf(winter)).toBe('09:00');
   });
 
   it('holds a daily series at the same hour across the March clock change', () => {
-    const hourOf = (date: Date): string =>
-      new Intl.DateTimeFormat('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        timeZone: SCHEDULING_TIME_ZONE,
-      }).format(date);
-
-    // 09:00 on 6 March 2026, two days before the US clocks would spring forward.
+    // 09:00 on 6 March 2026, two days before the clocks spring forward.
     const nineAm = new Date(Date.UTC(2026, 2, 6, 15));
     const starts = occurrenceStarts(
       nineAm,
@@ -232,8 +227,10 @@ describe('the scheduling zone is Central Standard the whole year', () => {
       SCHEDULING_TIME_ZONE,
     );
 
+    // The clock time is what the organiser chose, so that is what is kept.
     expect(new Set(starts.map(hourOf))).toEqual(new Set(['09:00']));
-    // And the underlying instant does not shift either, unlike a zone with DST.
-    expect(new Set(starts.map((date) => date.getUTCHours()))).toEqual(new Set([15]));
+    // The instant behind it moves by the hour the clocks did - which is the
+    // whole point: 09:00 on either side of the change is not the same moment.
+    expect(new Set(starts.map((date) => date.getUTCHours()))).toEqual(new Set([15, 14]));
   });
 });
