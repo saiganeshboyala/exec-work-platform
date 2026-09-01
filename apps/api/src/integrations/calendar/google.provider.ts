@@ -21,11 +21,10 @@ const SCOPES = [CALENDAR_SCOPE, 'openid', 'email'];
 
 /**
  * Google needs a zone to expand a recurrence rule against, and refuses the
- * event without one. UTC is the honest fallback when the caller did not say:
- * the instant is still correct, only the rule's idea of "every day at 09:00"
- * would follow UTC rather than the organiser's clock.
+ * event without one. This is the clock the deployment books against, used when
+ * a caller does not name one.
  */
-const DEFAULT_TIME_ZONE = 'UTC';
+const DEFAULT_TIME_ZONE = 'America/Chicago';
 
 interface TokenResponse {
   access_token: string;

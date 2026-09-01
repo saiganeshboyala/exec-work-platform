@@ -15,18 +15,15 @@ import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { membersApi } from '@/features/members';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
-import { browserTimeZone } from '@/shared/lib/calendar';
+import {
+  defaultSchedulingStart,
+  SCHEDULING_TIME_ZONE,
+  schedulingInputToDate,
+  schedulingZoneLabel,
+} from '@/shared/lib/calendar';
 import { PRIORITY_TONE, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import { itemsApi } from '../api/items.api';
-
-/** Next whole hour, in the format datetime-local expects. */
-function nextHour(): string {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  start.setHours(start.getHours() + 1);
-  return new Date(start.getTime() - start.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 /**
  * Creates a task from anywhere, without first navigating to the right board.
@@ -127,7 +124,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
       // Booked against the task that was just made, so it lands on the agenda
       // and shows on the task's row straight away.
       if (withMeeting && meetingAt !== '' && workspaceId !== '') {
-        const start = new Date(meetingAt);
+        const start = schedulingInputToDate(meetingAt);
         const attendeeIds = [...new Set([ownerId, ...assigneeIds].filter((id) => id !== ''))];
 
         try {
@@ -139,7 +136,7 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
             attendeeIds: attendeeIds.length > 0 ? attendeeIds : [currentUserId],
             itemIds: [item.id],
             ...(meetingRepeat ? { repeat: meetingRepeat } : {}),
-            timeZone: browserTimeZone(),
+            timeZone: SCHEDULING_TIME_ZONE,
           });
         } catch (error) {
           // The task exists and is the thing that was asked for; a failed
@@ -422,10 +419,10 @@ export function QuickCreateTask({ onClose }: { onClose: () => void }) {
                   checked={withMeeting}
                   onChange={(event) => {
                     setWithMeeting(event.target.checked);
-                    if (event.target.checked && meetingAt === '') setMeetingAt(nextHour());
+                    if (event.target.checked && meetingAt === '') setMeetingAt(defaultSchedulingStart());
                   }}
                 />
-                Also schedule a meeting about this task
+                Also schedule a meeting about this task <span className="meta">({schedulingZoneLabel()})</span>
               </label>
 
               {withMeeting ? (

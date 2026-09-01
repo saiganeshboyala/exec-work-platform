@@ -5,15 +5,13 @@ import { meetingsApi } from '@/features/meetings';
 import { CopyButton } from '@/shared/components/CopyButton';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { CalendarIcon } from '@/shared/components/icons';
-import { browserTimeZone } from '@/shared/lib/calendar';
+import {
+  dateToSchedulingInput,
+  SCHEDULING_TIME_ZONE,
+  schedulingInputToDate,
+  schedulingZoneLabel,
+} from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
-
-/** A datetime-local value from an ISO string, in the reader's own timezone. */
-function toLocalInput(iso: string): string {
-  const date = new Date(iso);
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
 
 /**
  * The next meeting about this task, and what you can do to it. Only the next
@@ -52,11 +50,11 @@ export function MeetingRow({
 
   const reschedule = useMutation({
     mutationFn: (id: string) => {
-      const start = new Date(startsAt);
+      const start = schedulingInputToDate(startsAt);
       return meetingsApi.reschedule(id, {
         startsAt: start,
         endsAt: new Date(start.getTime() + minutes * 60_000),
-        timeZone: browserTimeZone(),
+        timeZone: SCHEDULING_TIME_ZONE,
       });
     },
     onSuccess: async () => {
@@ -124,7 +122,8 @@ export function MeetingRow({
           <input
             className="field__input"
             type="datetime-local"
-            aria-label="New meeting time"
+            aria-label={`New meeting time in ${schedulingZoneLabel()}`}
+            title={`Times are ${schedulingZoneLabel()}`}
             value={startsAt}
             onChange={(event) => setStartsAt(event.target.value)}
           />
@@ -188,7 +187,7 @@ export function MeetingRow({
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {
-                setStartsAt(toLocalInput(next.startsAt));
+                setStartsAt(dateToSchedulingInput(next.startsAt));
                 setMinutes(
                   Math.max(
                     5,

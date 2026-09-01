@@ -6,22 +6,17 @@ import { boardsApi } from '@/features/boards';
 import { ApiError } from '@/shared/api/http-client';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
-import { browserTimeZone } from '@/shared/lib/calendar';
+import {
+  defaultSchedulingStart,
+  SCHEDULING_TIME_ZONE,
+  schedulingInputToDate,
+  schedulingZoneLabel,
+} from '@/shared/lib/calendar';
 
 import { meetingsApi } from '../api/meetings.api';
 
 import { AttendeePicker } from './AttendeePicker';
 import { RepeatPicker } from './RepeatPicker';
-
-/** Defaults to the next whole hour, which is what people usually mean. */
-function defaultStart(): string {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  start.setHours(start.getHours() + 1);
-  // datetime-local wants local time without a zone suffix.
-  const offset = start.getTimezoneOffset() * 60_000;
-  return new Date(start.getTime() - offset).toISOString().slice(0, 16);
-}
 
 export function ScheduleMeetingForm({
   workspaces,
@@ -37,7 +32,7 @@ export function ScheduleMeetingForm({
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
-  const [startsAt, setStartsAt] = useState(defaultStart);
+  const [startsAt, setStartsAt] = useState(defaultSchedulingStart);
   const [minutes, setMinutes] = useState(30);
   const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
   const [joinUrl, setJoinUrl] = useState('');
@@ -57,7 +52,7 @@ export function ScheduleMeetingForm({
 
   const schedule = useMutation({
     mutationFn: () => {
-      const start = new Date(startsAt);
+      const start = schedulingInputToDate(startsAt);
       return meetingsApi.schedule({
         workspaceId,
         title,
@@ -68,7 +63,7 @@ export function ScheduleMeetingForm({
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
         ...(trackAsTask && taskBoardId !== '' ? { createTaskOnBoardId: taskBoardId } : {}),
         ...(repeat ? { repeat } : {}),
-        timeZone: browserTimeZone(),
+        timeZone: SCHEDULING_TIME_ZONE,
       });
     },
     onSuccess: async (meeting) => {
@@ -132,7 +127,9 @@ export function ScheduleMeetingForm({
 
       <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
         <div className="field" style={{ flex: 1 }}>
-          <label className="field__label" htmlFor="meeting-start">Starts</label>
+          <label className="field__label" htmlFor="meeting-start">
+            Starts <span className="meta">({schedulingZoneLabel()})</span>
+          </label>
           <input
             id="meeting-start"
             className="field__input"

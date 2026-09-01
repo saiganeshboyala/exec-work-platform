@@ -63,14 +63,87 @@ export function sameDay(a: Date, b: Date): boolean {
 }
 
 /**
- * The organiser's IANA zone, as the browser reports it. Sent with a meeting so
- * a recurring event expands against their clock: "every weekday at 09:00" has
- * to mean 09:00 somewhere, and the server has no way to know where.
+ * The clock meetings are booked against, wherever the person booking happens to
+ * be. Everyone types and reads scheduling times in this zone, so a standup is
+ * at the same hour of the working day for the team it belongs to.
+ *
+ * Named rather than an offset because US Central changes its clocks twice a
+ * year; the zone knows when, a fixed -6 would be wrong for half of it.
  */
-export function browserTimeZone(): string {
+export const SCHEDULING_TIME_ZONE = 'America/Chicago';
+
+/** How that zone is worth showing to somebody, e.g. "CST" or "CDT". */
+export function schedulingZoneLabel(at: Date = new Date()): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: SCHEDULING_TIME_ZONE,
+      timeZoneName: 'short',
+    }).formatToParts(at);
+    return parts.find((part) => part.type === 'timeZoneName')?.value ?? 'CST';
   } catch {
-    return 'UTC';
+    return 'CST';
   }
+}
+
+/**
+ * The wall-clock reading in a zone, carried in a Date whose UTC fields hold it.
+ * The same trick the server uses, and for the same reason: a day and an hour
+ * only mean something once you say whose.
+ */
+function wallClock(instant: Date, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant);
+
+  const read = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+
+  return new Date(
+    Date.UTC(read('year'), read('month') - 1, read('day'), read('hour') % 24, read('minute'), read('second')),
+  );
+}
+
+function offsetMs(instant: Date, timeZone: string): number {
+  return wallClock(instant, timeZone).getTime() - instant.getTime();
+}
+
+/**
+ * Reads what somebody typed into a datetime-local field as a time in the
+ * scheduling zone. Without this the browser would read "09:00" as nine o'clock
+ * wherever the person is sitting, and two colleagues booking the same slot
+ * would create two different meetings.
+ */
+export function schedulingInputToDate(value: string): Date {
+  const [date, time] = value.split('T');
+  if (!date || !time) return new Date(NaN);
+
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+
+  const wall = Date.UTC(year as number, (month as number) - 1, day as number, hour as number, minute as number);
+  const guess = new Date(wall - offsetMs(new Date(wall), SCHEDULING_TIME_ZONE));
+  // A second pass settles a guess that landed on the wrong side of a clock change.
+  return new Date(wall - offsetMs(guess, SCHEDULING_TIME_ZONE));
+}
+
+/** The reverse: an instant as the scheduling zone's wall clock, for the field. */
+export function dateToSchedulingInput(iso: string | Date): string {
+  const instant = typeof iso === 'string' ? new Date(iso) : iso;
+  return wallClock(instant, SCHEDULING_TIME_ZONE).toISOString().slice(0, 16);
+}
+
+/** The next whole hour in the scheduling zone, which is what people mean. */
+export function defaultSchedulingStart(): string {
+  const now = new Date();
+  const wall = wallClock(now, SCHEDULING_TIME_ZONE);
+  wall.setUTCMinutes(0, 0, 0);
+  wall.setUTCHours(wall.getUTCHours() + 1);
+  return wall.toISOString().slice(0, 16);
 }

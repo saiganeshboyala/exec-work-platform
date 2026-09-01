@@ -6,16 +6,13 @@ import { AttendeePicker, meetingsApi, RepeatPicker } from '@/features/meetings';
 import { ApiError } from '@/shared/api/http-client';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { WarningIcon } from '@/shared/components/icons';
-import { browserTimeZone } from '@/shared/lib/calendar';
+import {
+  defaultSchedulingStart,
+  SCHEDULING_TIME_ZONE,
+  schedulingInputToDate,
+  schedulingZoneLabel,
+} from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
-
-/** Next whole hour, in the format datetime-local expects (local, no zone). */
-function defaultStart(): string {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  start.setHours(start.getHours() + 1);
-  return new Date(start.getTime() - start.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 /**
  * Schedules a meeting about one specific task. The task goes on the agenda and
@@ -38,7 +35,7 @@ export function TaskMeetingDialog({
 
   const [title, setTitle] = useState(`Review: ${item.title}`.slice(0, 200));
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
-  const [startsAt, setStartsAt] = useState(defaultStart);
+  const [startsAt, setStartsAt] = useState(defaultSchedulingStart);
   const [minutes, setMinutes] = useState(30);
   const [joinUrl, setJoinUrl] = useState('');
 
@@ -67,15 +64,15 @@ export function TaskMeetingDialog({
   }, [onClose]);
 
   const endsAt = useMemo(
-    () => new Date(new Date(startsAt).getTime() + minutes * 60_000),
+    () => new Date(schedulingInputToDate(startsAt).getTime() + minutes * 60_000),
     [startsAt, minutes],
   );
 
-  const validWindow = !Number.isNaN(new Date(startsAt).getTime()) && minutes > 0;
+  const validWindow = !Number.isNaN(schedulingInputToDate(startsAt).getTime()) && minutes > 0;
 
   const conflicts = useQuery({
     queryKey: ['meeting-conflicts', startsAt, minutes, attendeeIds.join(',')],
-    queryFn: () => meetingsApi.conflicts(new Date(startsAt), endsAt, attendeeIds),
+    queryFn: () => meetingsApi.conflicts(schedulingInputToDate(startsAt), endsAt, attendeeIds),
     enabled: validWindow && attendeeIds.length > 0,
     // Re-checking on every keystroke of the time field would hammer the API.
     staleTime: 5_000,
@@ -86,13 +83,13 @@ export function TaskMeetingDialog({
       meetingsApi.schedule({
         workspaceId,
         title: title.trim(),
-        startsAt: new Date(startsAt),
+        startsAt: schedulingInputToDate(startsAt),
         endsAt,
         attendeeIds,
         itemIds: [item.id],
         ...(joinUrl.trim() !== '' ? { joinUrl: joinUrl.trim() } : {}),
         ...(repeat ? { repeat } : {}),
-        timeZone: browserTimeZone(),
+        timeZone: SCHEDULING_TIME_ZONE,
       }),
     onSuccess: async (meeting) => {
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
@@ -171,7 +168,9 @@ export function TaskMeetingDialog({
 
           <div className="row" style={{ gap: 'var(--space-3)', alignItems: 'flex-end' }}>
             <div className="field" style={{ flex: 1 }}>
-              <label className="field__label" htmlFor="tm-start">Starts</label>
+              <label className="field__label" htmlFor="tm-start">
+                Starts <span className="meta">({schedulingZoneLabel()})</span>
+              </label>
               <input
                 id="tm-start"
                 className="field__input"

@@ -101,6 +101,13 @@ export function endFor(start: Date, firstStart: Date, firstEnd: Date): Date {
   return new Date(start.getTime() + (firstEnd.getTime() - firstStart.getTime()));
 }
 
+/**
+ * The clock this deployment books meetings against. Used when a caller does not
+ * name a zone, so a request without one still lands on the right day rather
+ * than on whatever the server's own clock happens to be.
+ */
+export const SCHEDULING_TIME_ZONE = 'America/Chicago';
+
 const RRULE_DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
 /**

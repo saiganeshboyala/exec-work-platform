@@ -11,7 +11,14 @@ import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { SegmentedControl } from '@/shared/components/SegmentedControl';
 import { SkeletonRows } from '@/shared/components/Skeleton';
-import { browserTimeZone, rangeFor, weekGrid } from '@/shared/lib/calendar';
+import {
+  dateToSchedulingInput,
+  rangeFor,
+  SCHEDULING_TIME_ZONE,
+  schedulingInputToDate,
+  schedulingZoneLabel,
+  weekGrid,
+} from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
 
 import { meetingsApi } from '../api/meetings.api';
@@ -26,12 +33,6 @@ const VIEWS = [
   { value: 'week' as const, label: 'Week' },
   { value: 'month' as const, label: 'Month' },
 ];
-
-/** An ISO instant as the local value a datetime-local input expects. */
-function toLocalInput(iso: string): string {
-  const date = new Date(iso);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 /** What the header says you are looking at, per view. */
 function headingFor(view: CalendarView, anchor: Date): string {
@@ -151,12 +152,12 @@ export function MeetingsPage() {
 
   const edit = useMutation({
     mutationFn: (id: string) => {
-      const start = new Date(editStartsAt);
+      const start = schedulingInputToDate(editStartsAt);
       return meetingsApi.reschedule(id, {
         title: editTitle.trim(),
         startsAt: start,
         endsAt: new Date(start.getTime() + editMinutes * 60_000),
-        timeZone: browserTimeZone(),
+        timeZone: SCHEDULING_TIME_ZONE,
       });
     },
     onSuccess: async (updated) => {
@@ -403,7 +404,7 @@ export function MeetingsPage() {
                 type="button"
                 onClick={() => {
                   setEditTitle(selected.title);
-                  setEditStartsAt(toLocalInput(selected.startsAt));
+                  setEditStartsAt(dateToSchedulingInput(selected.startsAt));
                   setEditMinutes(
                     Math.max(
                       5,
@@ -437,7 +438,8 @@ export function MeetingsPage() {
                 <input
                   className="field__input"
                   type="datetime-local"
-                  aria-label="Meeting time"
+                  aria-label={`Meeting time in ${schedulingZoneLabel()}`}
+                  title={`Times are ${schedulingZoneLabel()}`}
                   value={editStartsAt}
                   onChange={(event) => setEditStartsAt(event.target.value)}
                 />

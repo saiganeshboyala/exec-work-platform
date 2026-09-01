@@ -19,7 +19,7 @@ import { boardsService } from '@/modules/boards';
 import { notificationsService } from '@/modules/notifications';
 import { workspacesService } from '@/modules/workspaces';
 
-import { endFor, occurrenceStarts, toRRule } from './recurrence';
+import { endFor, occurrenceStarts, SCHEDULING_TIME_ZONE, toRRule } from './recurrence';
 
 type MeetingRow = Awaited<ReturnType<typeof loadMeeting>>;
 
@@ -279,7 +279,7 @@ export const meetingsService = {
       const [, ...laterStarts] = occurrenceStarts(
         input.startsAt,
         input.repeat,
-        input.timeZone ?? 'UTC',
+        input.timeZone ?? SCHEDULING_TIME_ZONE,
       );
 
       // Re-read: the calendar wrote the event id and the Meet link onto the row
