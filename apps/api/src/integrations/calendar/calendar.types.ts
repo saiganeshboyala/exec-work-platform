@@ -34,7 +34,7 @@ export interface CalendarProvider {
    */
   updateEvent(
     externalId: string,
-    input: Pick<CalendarEventInput, 'title' | 'startsAt' | 'endsAt'>,
+    input: Pick<CalendarEventInput, 'title' | 'startsAt' | 'endsAt' | 'timeZone' | 'recurrence'>,
     organizerUserId?: string,
   ): Promise<void>;
   cancelEvent(externalId: string, organizerUserId?: string): Promise<void>;

@@ -72,8 +72,9 @@ export function BoardPage() {
   }, [views.data, appliedDefault]);
 
   const canEdit = user ? ROLE_RANK[user.role] >= ROLE_RANK.MEMBER : false;
-  // Deleting a board takes its tasks with it, so it needs a higher bar than editing.
-  const canDeleteBoard = user ? ROLE_RANK[user.role] >= ROLE_RANK.MANAGER : false;
+  // Same bar as editing. Anyone who can raise work can retire it, and the API
+  // only ever hands back departments the caller can see in the first place.
+  const canDeleteBoard = canEdit;
   // Matches the nav and route gate on the department list.
   const canSeeAllBoards = user ? ROLE_RANK[user.role] >= ROLE_RANK.MANAGER : false;
 

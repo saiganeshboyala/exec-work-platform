@@ -1,4 +1,4 @@
-import type { MeetingDto } from '@ewp/contracts';
+import type { MeetingDto, RepeatInput } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -25,6 +25,7 @@ import { formatDateTimeWithZone } from '@/shared/lib/format';
 import { meetingsApi } from '../api/meetings.api';
 import { AttendeePicker } from '../components/AttendeePicker';
 import { MonthCalendar } from '../components/MonthCalendar';
+import { RepeatPicker } from '../components/RepeatPicker';
 import { ScheduleMeetingForm } from '../components/ScheduleMeetingForm';
 import { TimeGridCalendar } from '../components/TimeGridCalendar';
 
@@ -94,6 +95,7 @@ export function MeetingsPage() {
   const [editMinutes, setEditMinutes] = useState(30);
   const [editingPeople, setEditingPeople] = useState(false);
   const [newWorkspace, setNewWorkspace] = useState('');
+  const [editRepeat, setEditRepeat] = useState<RepeatInput | null>(null);
   const [editAttendeeIds, setEditAttendeeIds] = useState<string[]>([]);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -177,10 +179,12 @@ export function MeetingsPage() {
         startsAt: start,
         endsAt: new Date(start.getTime() + editMinutes * 60_000),
         timeZone: SCHEDULING_TIME_ZONE,
+        ...(editRepeat ? { repeat: editRepeat } : {}),
       });
     },
     onSuccess: async (updated) => {
       setEditing(false);
+      setEditRepeat(null);
       setSelected(updated);
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
       await queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -456,6 +460,7 @@ export function MeetingsPage() {
                       ),
                     ),
                   );
+                  setEditRepeat(null);
                   setEditing(true);
                 }}
               >
@@ -515,8 +520,18 @@ export function MeetingsPage() {
                   Cancel
                 </button>
               </div>
+              {selected.seriesId === null ? (
+                <div className="stack" style={{ gap: 4 }}>
+                  <span className="field__label">Repeats</span>
+                  <RepeatPicker value={editRepeat} onChange={setEditRepeat} />
+                </div>
+              ) : null}
               <p className="meta">
-                Everyone invited is told. The join link does not change.
+                {selected.seriesId !== null
+                  ? 'One occurrence of a repeat. Moving it leaves the rest where they are.'
+                  : editRepeat
+                    ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
+                    : 'Everyone invited is told. The join link does not change.'}
               </p>
               {edit.error ? <ErrorNotice error={edit.error} /> : null}
             </div>

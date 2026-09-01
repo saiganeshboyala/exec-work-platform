@@ -5,6 +5,7 @@ import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
 import { boardFilter, seesWholeOrganization } from '@/modules/access';
 import { activityService } from '@/modules/activity';
+import { meetingsService } from '@/modules/meetings';
 import { workspacesService } from '@/modules/workspaces';
 
 import { boardsRepository } from './boards.repository';
@@ -102,6 +103,11 @@ export const boardsService = {
   async remove(auth: AuthContext, id: string, requestId: string): Promise<void> {
     await this.getOrFail(auth, id);
     await boardsRepository.softDelete(id);
+
+    // Deleted here, the department's meetings used to stay live in Google -
+    // still inviting, still reminding, and no longer cancellable from the app
+    // because the rows had become invisible with the board.
+    await meetingsService.cancelForBoard(auth, id, requestId);
 
     await activityService.record({
       organizationId: auth.organizationId,

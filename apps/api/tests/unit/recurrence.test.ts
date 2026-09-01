@@ -234,3 +234,41 @@ describe('the scheduling zone follows the Central clock', () => {
     expect(new Set(starts.map((date) => date.getUTCHours()))).toEqual(new Set([15, 14]));
   });
 });
+
+describe('turning a one-off into a repeat', () => {
+  const dayIn = (date: Date): string =>
+    new Intl.DateTimeFormat('en-GB', {
+      weekday: 'short',
+      timeZone: SCHEDULING_TIME_ZONE,
+    }).format(date);
+
+  it('keeps the meeting already booked as the first occurrence', () => {
+    // The case this exists for: booked once for a Wednesday, meant to be every
+    // weekday. The Wednesday must not move, or the invitation people hold and
+    // the meeting they turn up to stop being the same one.
+    const wednesday = new Date(Date.UTC(2026, 8, 2, 14));
+
+    const starts = occurrenceStarts(
+      wednesday,
+      { frequency: 'WEEKDAYS', days: [], count: 5 },
+      SCHEDULING_TIME_ZONE,
+    );
+
+    expect(starts[0]?.getTime()).toBe(wednesday.getTime());
+    expect(starts).toHaveLength(5);
+    expect(starts.map(dayIn)).toEqual(['Wed', 'Thu', 'Fri', 'Mon', 'Tue']);
+  });
+
+  it('counts the meeting that already exists towards the total', () => {
+    const start = new Date(Date.UTC(2026, 8, 2, 14));
+    const starts = occurrenceStarts(
+      start,
+      { frequency: 'WEEKLY', days: [], count: 4 },
+      SCHEDULING_TIME_ZONE,
+    );
+
+    // Four in total, so three are added - not four on top of the one booked.
+    expect(starts).toHaveLength(4);
+    expect(toRRule({ frequency: 'WEEKLY', days: [], count: 4 })).toContain('COUNT=4');
+  });
+});

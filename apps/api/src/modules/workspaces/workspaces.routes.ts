@@ -28,4 +28,5 @@ workspacesRouter.patch(
   asyncHandler(workspacesController.update),
 );
 
-workspacesRouter.delete('/:id', authorize('ADMIN'), asyncHandler(workspacesController.remove));
+// Same bar as a department: scoped by what the caller can see, not by rank.
+workspacesRouter.delete('/:id', authorize('MEMBER'), asyncHandler(workspacesController.remove));

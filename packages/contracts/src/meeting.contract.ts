@@ -69,6 +69,15 @@ export const rescheduleMeetingSchema = z
     startsAt: z.coerce.date(),
     endsAt: z.coerce.date(),
     timeZone: z.string().max(100).optional(),
+    /**
+     * Turns a one-off into a repeat. For the meeting booked as a single
+     * Wednesday that was meant to be every weekday: rather than cancelling and
+     * starting again, the pattern is added and the rest is left alone - the
+     * same people, the same agenda, the same join link.
+     *
+     * Only meaningful on a meeting that is not already a repeat.
+     */
+    repeat: repeatSchema.optional(),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: 'The end time must be after the start time',

@@ -34,4 +34,6 @@ boardsRouter.patch(
   asyncHandler(boardsController.update),
 );
 
-boardsRouter.delete('/:id', authorize('MANAGER'), asyncHandler(boardsController.remove));
+// Anyone who can raise work can retire it. getOrFail still scopes this to what
+// the caller can see, so a member reaches only their own departments.
+boardsRouter.delete('/:id', authorize('MEMBER'), asyncHandler(boardsController.remove));

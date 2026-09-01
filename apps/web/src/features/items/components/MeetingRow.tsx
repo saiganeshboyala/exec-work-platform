@@ -1,7 +1,8 @@
+import type { RepeatInput } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { meetingsApi } from '@/features/meetings';
+import { meetingsApi, RepeatPicker } from '@/features/meetings';
 import { CopyButton } from '@/shared/components/CopyButton';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { CalendarIcon } from '@/shared/components/icons';
@@ -34,6 +35,7 @@ export function MeetingRow({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [startsAt, setStartsAt] = useState('');
+  const [repeat, setRepeat] = useState<RepeatInput | null>(null);
   const [minutes, setMinutes] = useState(30);
   const [confirmingAll, setConfirmingAll] = useState(false);
 
@@ -55,10 +57,12 @@ export function MeetingRow({
         startsAt: start,
         endsAt: new Date(start.getTime() + minutes * 60_000),
         timeZone: SCHEDULING_TIME_ZONE,
+        ...(repeat ? { repeat } : {}),
       });
     },
     onSuccess: async () => {
       setEditing(false);
+      setRepeat(null);
       await refresh();
     },
   });
@@ -148,7 +152,19 @@ export function MeetingRow({
             Cancel
           </button>
         </div>
-        <p className="meta">Everyone invited is told. The join link does not change.</p>
+        {next.seriesId === null ? (
+          <div className="stack" style={{ gap: 4 }}>
+            <span className="field__label">Repeats</span>
+            <RepeatPicker value={repeat} onChange={setRepeat} />
+          </div>
+        ) : null}
+        <p className="meta">
+          {next.seriesId !== null
+            ? 'One occurrence of a repeat. Moving it leaves the rest where they are.'
+            : repeat
+              ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
+              : 'Everyone invited is told. The join link does not change.'}
+        </p>
         {reschedule.error ? <ErrorNotice error={reschedule.error} /> : null}
       </div>
     );

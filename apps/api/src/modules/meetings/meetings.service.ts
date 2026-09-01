@@ -387,12 +387,26 @@ export const meetingsService = {
       throw AppError.forbidden('Only the organiser or a manager can move this meeting');
     }
 
+    // Adding a pattern to something that already has one would mean rebuilding
+    // the series around a new rule, and every attendee being re-invited to it.
+    if (input.repeat && meeting.seriesId) {
+      throw AppError.badRequest(
+        'This meeting already repeats. Cancel the repeat and schedule it again to change the pattern.',
+      );
+    }
+
+    // A one-off becoming a repeat: the occurrences are built below, all sharing
+    // this id and the one calendar event, so the whole lot can be called off at
+    // once and nobody is invited twice.
+    const newSeriesId = input.repeat && !meeting.seriesId ? randomUUID() : null;
+
     await prisma.meeting.update({
       where: { id: meetingId },
       data: {
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         ...(input.title ? { title: input.title } : {}),
+        ...(newSeriesId ? { seriesId: newSeriesId } : {}),
       },
     });
 
@@ -405,6 +419,9 @@ export const meetingsService = {
           startsAt: input.startsAt,
           endsAt: input.endsAt,
           timeZone: input.timeZone,
+          // One patch does both, so the event becomes recurring without a
+          // second round trip and without re-inviting anybody.
+          ...(input.repeat ? { recurrence: [toRRule(input.repeat)] } : {}),
         };
 
         if (meeting.seriesId) {
@@ -428,10 +445,52 @@ export const meetingsService = {
       }
     }
 
+    // The rest of the repeat. Rows of their own so a single week can still be
+    // moved or called off, but all pointing at the one event patched above -
+    // giving each its own event would invite everybody once per occurrence.
+    if (input.repeat && newSeriesId) {
+      const source = await requireMeeting(meetingId);
+      const [, ...laterStarts] = occurrenceStarts(
+        input.startsAt,
+        input.repeat,
+        input.timeZone ?? SCHEDULING_TIME_ZONE,
+      );
+
+      for (const startsAt of laterStarts) {
+        await prisma.meeting.create({
+          data: {
+            workspaceId: source.workspaceId,
+            title: source.title,
+            startsAt,
+            endsAt: endFor(startsAt, input.startsAt, input.endsAt),
+            location: source.location,
+            // Everything else stays as it was: the same room, the same people,
+            // the same agenda, and the link they already hold.
+            joinUrl: source.joinUrl,
+            createdById: source.createdById,
+            seriesId: newSeriesId,
+            calendarEventId: source.calendarEventId,
+            attendees: {
+              createMany: { data: source.attendees.map((a) => ({ userId: a.user.id })) },
+            },
+            agenda: {
+              createMany: {
+                data: source.agenda.map((entry, position) => ({
+                  itemId: entry.itemId,
+                  position,
+                  chosen: entry.chosen,
+                })),
+              },
+            },
+          },
+        });
+      }
+    }
+
     await notificationsService.notify({
       organizationId: auth.organizationId,
       userIds: meeting.attendees.map((a) => a.userId).filter((id) => id !== auth.userId),
-      title: 'Meeting moved',
+      title: input.repeat ? 'Meeting now repeats' : 'Meeting moved',
       body: `${input.title ?? meeting.title} · ${input.startsAt.toLocaleString('en-GB')}`,
       url: '/meetings',
     });
@@ -585,6 +644,82 @@ export const meetingsService = {
 
     const dto = toDto(await requireMeeting(meetingId));
     return calendarWarning ? { ...dto, calendarWarning } : dto;
+  },
+
+  /**
+   * Calls off a set of meetings, a repeat counting once.
+   *
+   * A series is one event in the calendar but one row per occurrence here, so
+   * cancelling them one at a time would email every attendee once per week.
+   */
+  async cancelMany(auth: AuthContext, meetingIds: string[], requestId: string): Promise<number> {
+    const rows = await prisma.meeting.findMany({
+      where: { id: { in: meetingIds }, cancelledAt: null },
+      select: { id: true, seriesId: true },
+    });
+
+    const doneSeries = new Set<string>();
+    let cancelled = 0;
+
+    for (const row of rows) {
+      if (row.seriesId) {
+        if (doneSeries.has(row.seriesId)) continue;
+        doneSeries.add(row.seriesId);
+        await this.cancelSeries(auth, row.id, requestId).catch(() => undefined);
+      } else {
+        await this.cancel(auth, row.id, requestId).catch(() => undefined);
+      }
+      cancelled += 1;
+    }
+
+    return cancelled;
+  },
+
+  /**
+   * Everything booked in a workspace that is going away. The workspace is the
+   * meeting's own home, so nothing in it survives its deletion.
+   */
+  async cancelForWorkspace(auth: AuthContext, workspaceId: string, requestId: string) {
+    const rows = await prisma.meeting.findMany({
+      where: { workspaceId, cancelledAt: null },
+      select: { id: true },
+    });
+    return this.cancelMany(auth, rows.map((row) => row.id), requestId);
+  },
+
+  /**
+   * Meetings left with nothing to discuss once a department goes.
+   *
+   * A meeting spanning departments keeps going - the rest of the room still has
+   * a reason to meet. Only one whose whole agenda lived here is called off. The
+   * board is already soft-deleted by the time this runs, so "still has an
+   * agenda" is simply an item on a board that is not deleted.
+   */
+  async cancelForBoard(auth: AuthContext, boardId: string, requestId: string) {
+    const agendas = await prisma.meetingAgendaItem.findMany({
+      where: {
+        chosen: true,
+        meeting: { cancelledAt: null },
+        item: { deletedAt: null, boardId },
+      },
+      select: { meetingId: true },
+      distinct: ['meetingId'],
+    });
+
+    const orphaned: string[] = [];
+
+    for (const { meetingId } of agendas) {
+      const remaining = await prisma.meetingAgendaItem.count({
+        where: {
+          meetingId,
+          chosen: true,
+          item: { deletedAt: null, board: { deletedAt: null } },
+        },
+      });
+      if (remaining === 0) orphaned.push(meetingId);
+    }
+
+    return this.cancelMany(auth, orphaned, requestId);
   },
 
   /**

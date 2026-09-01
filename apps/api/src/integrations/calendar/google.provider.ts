@@ -287,7 +287,13 @@ export class GoogleCalendarProvider implements CalendarProvider {
 
   async updateEvent(
     externalId: string,
-    input: { title: string; startsAt: Date; endsAt: Date; timeZone?: string },
+    input: {
+      title: string;
+      startsAt: Date;
+      endsAt: Date;
+      timeZone?: string;
+      recurrence?: string[];
+    },
     organizerUserId?: string,
   ): Promise<void> {
     if (!organizerUserId) {
@@ -312,6 +318,10 @@ export class GoogleCalendarProvider implements CalendarProvider {
           dateTime: input.endsAt.toISOString(),
           timeZone: input.timeZone ?? DEFAULT_TIME_ZONE,
         },
+        // Given a rule, a single event becomes a recurring one in place: the
+        // people on it and the Meet link they hold carry over, and nobody is
+        // invited a second time.
+        ...(input.recurrence?.length ? { recurrence: input.recurrence } : {}),
       }),
     });
 

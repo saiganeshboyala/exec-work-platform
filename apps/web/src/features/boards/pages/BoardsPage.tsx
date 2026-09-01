@@ -40,6 +40,20 @@ export function BoardsPage() {
     enabled: workspaceId !== '',
   });
 
+  const [confirmingWorkspaceDelete, setConfirmingWorkspaceDelete] = useState(false);
+
+  const deleteWorkspace = useMutation({
+    mutationFn: (id: string) => boardsApi.removeWorkspace(id),
+    onSuccess: async () => {
+      setConfirmingWorkspaceDelete(false);
+      // The chosen workspace has just gone, so the picker has to re-resolve.
+      setWorkspaceId('');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
+      await queryClient.invalidateQueries({ queryKey: ['boards'] });
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+    },
+  });
+
   const createWorkspace = useMutation({
     mutationFn: (name: string) => boardsApi.createWorkspace({ name }),
     onSuccess: async (created) => {
@@ -93,12 +107,22 @@ export function BoardsPage() {
               </select>
 
               {canEdit ? (
-                <InlineCreate
-                  label="New workspace"
-                  placeholder="Workspace name"
-                  pending={createWorkspace.isPending}
-                  onSubmit={(name) => createWorkspace.mutate(name)}
-                />
+                <>
+                  <InlineCreate
+                    label="New workspace"
+                    placeholder="Workspace name"
+                    pending={createWorkspace.isPending}
+                    onSubmit={(name) => createWorkspace.mutate(name)}
+                  />
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    type="button"
+                    style={{ color: 'var(--blocked)' }}
+                    onClick={() => setConfirmingWorkspaceDelete(true)}
+                  >
+                    Delete workspace
+                  </button>
+                </>
               ) : null}
             </span>
           ) : null
@@ -106,6 +130,39 @@ export function BoardsPage() {
       />
 
       {createWorkspace.error ? <ErrorNotice error={createWorkspace.error} /> : null}
+
+      {/* Spelled out rather than a bare "are you sure": this takes the
+          departments and every meeting booked in the workspace with it. */}
+      {confirmingWorkspaceDelete ? (
+        <div className="card stack" style={{ gap: 'var(--space-3)', borderColor: 'var(--blocked)' }}>
+          <p style={{ fontWeight: 600, color: 'var(--blocked)' }}>
+            Delete “{workspaces.data?.find((w) => w.id === workspaceId)?.name}”?
+          </p>
+          <p className="meta">
+            Its departments go with it, and every meeting booked in it is cancelled - attendees
+            are told, and the invitations are withdrawn from their calendars.
+          </p>
+          <div className="row" style={{ gap: 'var(--space-2)' }}>
+            <button
+              className="btn btn--sm"
+              type="button"
+              style={{ color: 'var(--blocked)', borderColor: 'var(--blocked)' }}
+              disabled={deleteWorkspace.isPending}
+              onClick={() => deleteWorkspace.mutate(workspaceId)}
+            >
+              {deleteWorkspace.isPending ? 'Deleting…' : 'Yes, delete it'}
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
+              type="button"
+              onClick={() => setConfirmingWorkspaceDelete(false)}
+            >
+              Keep it
+            </button>
+          </div>
+          {deleteWorkspace.error ? <ErrorNotice error={deleteWorkspace.error} /> : null}
+        </div>
+      ) : null}
 
       {!hasWorkspace ? (
         <div className="card">

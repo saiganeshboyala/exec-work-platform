@@ -19,4 +19,7 @@ export const boardsApi = {
   get: (id: string) => apiRequest<BoardDto>(`/boards/${id}`),
   create: (body: CreateBoardInput) => apiRequest<BoardDto>('/boards', { method: 'POST', body }),
   remove: (id: string) => apiRequest<void>(`/boards/${id}`, { method: 'DELETE' }),
+
+  /** Takes the departments and the meetings booked in it with it. */
+  removeWorkspace: (id: string) => apiRequest<void>(`/workspaces/${id}`, { method: 'DELETE' }),
 };

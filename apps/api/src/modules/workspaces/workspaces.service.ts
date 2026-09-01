@@ -5,6 +5,7 @@ import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
 import { seesWholeOrganization, workspaceFilter } from '@/modules/access';
 import { activityService } from '@/modules/activity';
+import { meetingsService } from '@/modules/meetings';
 
 import { workspacesRepository } from './workspaces.repository';
 
@@ -101,6 +102,10 @@ export const workspacesService = {
   async remove(auth: AuthContext, id: string, requestId: string): Promise<void> {
     await this.getOrFail(auth, id);
     await workspacesRepository.softDelete(id);
+
+    // The workspace is where a meeting lives, so nothing booked in it outlives
+    // it. Left alone, these stayed in everybody's Google calendar for good.
+    await meetingsService.cancelForWorkspace(auth, id, requestId);
 
     await activityService.record({
       organizationId: auth.organizationId,
