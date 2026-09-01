@@ -76,6 +76,18 @@ export const rescheduleMeetingSchema = z
   });
 export type RescheduleMeetingInput = z.infer<typeof rescheduleMeetingSchema>;
 
+/**
+ * Who is coming, after the meeting exists. The whole list is sent rather than
+ * a pair of add and remove lists: the client already holds it, and one list
+ * cannot describe a half-applied change.
+ *
+ * A meeting with nobody in it is a diary entry, so the floor stays at one.
+ */
+export const updateAttendeesSchema = z.object({
+  attendeeIds: z.array(z.string().uuid()).min(1).max(50),
+});
+export type UpdateAttendeesInput = z.infer<typeof updateAttendeesSchema>;
+
 /** The calendar asks for a window; the list endpoint asks for nothing. */
 export const listMeetingsQuerySchema = z
   .object({

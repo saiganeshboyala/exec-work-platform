@@ -4,6 +4,7 @@ import {
   recordDecisionSchema,
   rescheduleMeetingSchema,
   scheduleMeetingSchema,
+  updateAttendeesSchema,
 } from '@ewp/contracts';
 import { Router } from 'express';
 
@@ -46,6 +47,16 @@ meetingsRouter.patch(
   authorize('MEMBER'),
   validate(rescheduleMeetingSchema),
   asyncHandler(meetingsController.reschedule),
+);
+
+// Declared before the '/:id' handlers so the literal path is not read as an id.
+// MEMBER here only keeps viewers out; the service holds the real bar, which is
+// organiser-or-manager - so a member manages their own meeting's guest list.
+meetingsRouter.patch(
+  '/:id/attendees',
+  authorize('MEMBER'),
+  validate(updateAttendeesSchema),
+  asyncHandler(meetingsController.updateAttendees),
 );
 
 meetingsRouter.delete('/:id', authorize('MEMBER'), asyncHandler(meetingsController.cancel));

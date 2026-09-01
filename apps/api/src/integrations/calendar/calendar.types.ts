@@ -39,6 +39,19 @@ export interface CalendarProvider {
   ): Promise<void>;
   cancelEvent(externalId: string, organizerUserId?: string): Promise<void>;
   /**
+   * Replaces the guest list. The provider works out who is new and who has
+   * gone, so newcomers receive an invitation and anyone dropped receives a
+   * cancellation - which is the whole reason this is not done by hand.
+   *
+   * Attendees belong to the event, so on a recurring one this covers every
+   * occurrence. There is no such thing as coming to only the third week.
+   */
+  updateAttendees(
+    externalId: string,
+    attendeeEmails: string[],
+    organizerUserId?: string,
+  ): Promise<void>;
+  /**
    * One occurrence of a recurring event, addressed by the time it was
    * originally due to start. Cancelling or moving a single week must not
    * disturb the rest of the series - or re-invite anyone to it.

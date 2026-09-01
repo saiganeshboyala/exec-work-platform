@@ -6,6 +6,7 @@ import type {
   RecordDecisionInput,
   RescheduleMeetingInput,
   ScheduleMeetingInput,
+  UpdateAttendeesInput,
 } from '@ewp/contracts';
 
 import { AppError } from '@/common/errors';
@@ -13,13 +14,24 @@ import { logger } from '@/common/logger';
 import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
 import { calendarProvider } from '@/integrations/calendar';
-import { meetingFilter } from '@/modules/access';
+import { itemFilter, meetingFilter } from '@/modules/access';
 import { activityService } from '@/modules/activity';
 import { boardsService } from '@/modules/boards';
 import { notificationsService } from '@/modules/notifications';
 import { workspacesService } from '@/modules/workspaces';
 
 import { endFor, occurrenceStarts, SCHEDULING_TIME_ZONE, toRRule } from './recurrence';
+
+/**
+ * Who may change a meeting: whoever arranged it, or a manager over them.
+ *
+ * Deliberately not a rank test alone. A member who arranges a meeting runs it
+ * exactly as an admin runs theirs - moving it, calling it off, deciding who is
+ * coming - while a peer who merely attends cannot touch it.
+ */
+export function canRunMeeting(auth: AuthContext, meeting: { createdById: string }): boolean {
+  return meeting.createdById === auth.userId || ROLE_RANK[auth.role] >= ROLE_RANK.MANAGER;
+}
 
 type MeetingRow = Awaited<ReturnType<typeof loadMeeting>>;
 
@@ -32,6 +44,13 @@ async function loadMeeting(id: string) {
       _count: { select: { decisions: true } },
     },
   });
+}
+
+/** The same read, for when the row must exist because we just wrote to it. */
+async function requireMeeting(id: string) {
+  const row = await loadMeeting(id);
+  if (!row) throw AppError.internal();
+  return row;
 }
 
 function toDto(row: NonNullable<MeetingRow>): MeetingDto {
@@ -149,11 +168,22 @@ export const meetingsService = {
   async schedule(auth: AuthContext, input: ScheduleMeetingInput, requestId: string): Promise<MeetingDto> {
     await workspacesService.getOrFail(auth, input.workspaceId);
 
+    // Only what the organiser can actually see. Swept in unfiltered, a member
+    // arranging a meeting would pull colleagues' blocked work onto their agenda
+    // - work they cannot open, and whose deletion would call their meeting off.
     const attention = await prisma.item.findMany({
       where: {
         deletedAt: null,
         board: { deletedAt: null, workspaceId: input.workspaceId },
-        OR: [{ status: 'BLOCKED' }, { dueDate: { lt: new Date() }, status: { notIn: ['DONE', 'CANCELLED'] } }],
+        AND: [
+          await itemFilter(auth),
+          {
+            OR: [
+              { status: 'BLOCKED' },
+              { dueDate: { lt: new Date() }, status: { notIn: ['DONE', 'CANCELLED'] } },
+            ],
+          },
+        ],
       },
       select: { id: true },
       take: 50,
@@ -353,7 +383,7 @@ export const meetingsService = {
     }
 
     // Same bar as cancelling: the organiser, or a manager over them.
-    if (meeting.createdById !== auth.userId && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+    if (!canRunMeeting(auth, meeting)) {
       throw AppError.forbidden('Only the organiser or a manager can move this meeting');
     }
 
@@ -425,6 +455,139 @@ export const meetingsService = {
   },
 
   /**
+   * Changes who is coming to a meeting that already exists.
+   *
+   * The bar is the organiser, or a manager over them - the same one that guards
+   * moving and cancelling. Anyone who can arrange a meeting can therefore
+   * manage its guest list, whatever their role: a member runs their own
+   * meetings exactly as an admin runs theirs.
+   *
+   * Attendees belong to the calendar event, and a series shares one event, so
+   * changing them changes the whole series. Doing it per occurrence would mean
+   * one event per week, and one invitation per week for everybody on it.
+   */
+  async updateAttendees(
+    auth: AuthContext,
+    meetingId: string,
+    input: UpdateAttendeesInput,
+    requestId: string,
+  ): Promise<MeetingDto> {
+    const meeting = await prisma.meeting.findFirst({
+      where: {
+        id: meetingId,
+        workspace: { organizationId: auth.organizationId, deletedAt: null },
+      },
+      include: { attendees: { select: { userId: true } } },
+    });
+    if (!meeting) throw AppError.notFound('Meeting');
+    if (meeting.cancelledAt !== null) {
+      throw AppError.badRequest('That meeting was cancelled, so nobody can be added to it.');
+    }
+
+    if (!canRunMeeting(auth, meeting)) {
+      throw AppError.forbidden('Only the organiser or a manager can change who is coming');
+    }
+
+    // Only colleagues. Without this an id from another tenant would be written
+    // straight onto the meeting and then handed to Google as an invitation.
+    const wanted = [...new Set(input.attendeeIds)];
+    const colleagues = await prisma.membership.findMany({
+      where: { organizationId: auth.organizationId, userId: { in: wanted } },
+      select: { userId: true },
+    });
+    const allowed = colleagues.map((row) => row.userId);
+
+    if (allowed.length === 0) {
+      throw AppError.badRequest('None of those people are in this organization');
+    }
+
+    const before = new Set(meeting.attendees.map((a) => a.userId));
+    const after = new Set(allowed);
+    const added = allowed.filter((id) => !before.has(id));
+    const removed = [...before].filter((id) => !after.has(id));
+
+    if (added.length === 0 && removed.length === 0) return toDto(await requireMeeting(meetingId));
+
+    // A series shares one calendar event, so its rows move together or the app
+    // and the calendar start disagreeing about who was invited.
+    const ids = meeting.seriesId
+      ? (
+          await prisma.meeting.findMany({
+            where: { seriesId: meeting.seriesId, cancelledAt: null },
+            select: { id: true },
+          })
+        ).map((row) => row.id)
+      : [meetingId];
+
+    await prisma.$transaction([
+      prisma.meetingAttendee.deleteMany({
+        where: { meetingId: { in: ids }, userId: { notIn: allowed } },
+      }),
+      prisma.meetingAttendee.createMany({
+        data: ids.flatMap((id) => allowed.map((userId) => ({ meetingId: id, userId }))),
+        skipDuplicates: true,
+      }),
+    ]);
+
+    let calendarWarning: string | undefined;
+
+    if (meeting.calendarEventId) {
+      const emails = (
+        await prisma.user.findMany({ where: { id: { in: allowed } }, select: { email: true } })
+      ).map((user) => user.email);
+
+      try {
+        await calendarProvider.updateAttendees(
+          meeting.calendarEventId,
+          emails,
+          meeting.createdById,
+        );
+      } catch (error) {
+        logger.error({ err: error, meetingId }, 'Calendar attendee sync failed; meeting kept');
+        // Saved here either way, but somebody has to know the invitations did
+        // not go out - otherwise a person is "on" a meeting they never heard of.
+        calendarWarning =
+          (error instanceof Error ? error.message : 'The calendar could not be updated') +
+          ' The meeting is up to date here, but the invitations were not sent.';
+      }
+    }
+
+    if (added.length > 0) {
+      await notificationsService.notify({
+        organizationId: auth.organizationId,
+        userIds: added.filter((id) => id !== auth.userId),
+        title: 'Added to a meeting',
+        body: `${meeting.title} · ${meeting.startsAt.toLocaleString('en-GB')}`,
+        url: '/meetings',
+      });
+    }
+
+    if (removed.length > 0) {
+      await notificationsService.notify({
+        organizationId: auth.organizationId,
+        userIds: removed.filter((id) => id !== auth.userId),
+        title: 'Removed from a meeting',
+        body: `${meeting.title} · ${meeting.startsAt.toLocaleString('en-GB')}`,
+        url: '/meetings',
+      });
+    }
+
+    await activityService.record({
+      organizationId: auth.organizationId,
+      actorId: auth.userId,
+      entityType: 'Meeting',
+      entityId: meetingId,
+      verb: 'UPDATED',
+      before: { attendees: [...before] },
+      after: { attendees: allowed },
+      requestId,
+    });
+
+    const dto = toDto(await requireMeeting(meetingId));
+    return calendarWarning ? { ...dto, calendarWarning } : dto;
+  },
+
+  /**
    * Calls off every remaining occurrence of a repeating meeting. Past ones are
    * left alone - they happened, and cancelling history helps nobody.
    */
@@ -444,7 +607,7 @@ export const meetingsService = {
       return { cancelled: 1 };
     }
 
-    if (meeting.createdById !== auth.userId && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+    if (!canRunMeeting(auth, meeting)) {
       throw AppError.forbidden('Only the organiser or a manager can cancel this meeting');
     }
 
@@ -511,8 +674,7 @@ export const meetingsService = {
 
     // Organisers can call off their own meeting; past that it takes a manager,
     // so one attendee cannot cancel something the rest of the room needs.
-    const isOrganiser = meeting.createdById === auth.userId;
-    if (!isOrganiser && ROLE_RANK[auth.role] < ROLE_RANK.MANAGER) {
+    if (!canRunMeeting(auth, meeting)) {
       throw AppError.forbidden('Only the organiser or a manager can cancel this meeting');
     }
 

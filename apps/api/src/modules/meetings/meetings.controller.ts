@@ -4,6 +4,7 @@ import type {
   RecordDecisionInput,
   RescheduleMeetingInput,
   ScheduleMeetingInput,
+  UpdateAttendeesInput,
 } from '@ewp/contracts';
 import type { Request, Response } from 'express';
 
@@ -63,6 +64,18 @@ export const meetingsController = {
         requireAuth(req),
         req.params.id as string,
         req.body as RescheduleMeetingInput,
+        req.requestId,
+      ),
+    );
+  },
+
+  async updateAttendees(req: Request, res: Response): Promise<void> {
+    sendOk(
+      res,
+      await meetingsService.updateAttendees(
+        requireAuth(req),
+        req.params.id as string,
+        req.body as UpdateAttendeesInput,
         req.requestId,
       ),
     );

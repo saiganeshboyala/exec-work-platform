@@ -23,6 +23,7 @@ import {
 import { formatDateTimeWithZone } from '@/shared/lib/format';
 
 import { meetingsApi } from '../api/meetings.api';
+import { AttendeePicker } from '../components/AttendeePicker';
 import { MonthCalendar } from '../components/MonthCalendar';
 import { ScheduleMeetingForm } from '../components/ScheduleMeetingForm';
 import { TimeGridCalendar } from '../components/TimeGridCalendar';
@@ -91,6 +92,8 @@ export function MeetingsPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editStartsAt, setEditStartsAt] = useState('');
   const [editMinutes, setEditMinutes] = useState(30);
+  const [editingPeople, setEditingPeople] = useState(false);
+  const [editAttendeeIds, setEditAttendeeIds] = useState<string[]>([]);
   const detailRef = useRef<HTMLDivElement>(null);
 
   // Fetch exactly what the current view draws - rangeFor owns both.
@@ -184,6 +187,16 @@ export function MeetingsPage() {
     },
   });
 
+  const updatePeople = useMutation({
+    mutationFn: (id: string) => meetingsApi.updateAttendees(id, editAttendeeIds),
+    onSuccess: async (updated) => {
+      setEditingPeople(false);
+      setSelected(updated);
+      await queryClient.invalidateQueries({ queryKey: ['meetings'] });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
   const disconnect = useMutation({
     mutationFn: meetingsApi.disconnectCalendar,
     onSuccess: async () => {
@@ -198,6 +211,7 @@ export function MeetingsPage() {
     setSelected(meeting);
     setConfirmingCancel(false);
     setEditing(false);
+    setEditingPeople(false);
   };
 
   const banner = params.get('calendar');
@@ -435,6 +449,16 @@ export function MeetingsPage() {
               >
                 Edit
               </button>
+              <button
+                className="btn btn--sm"
+                type="button"
+                onClick={() => {
+                  setEditAttendeeIds(selected.attendees.map((attendee) => attendee.id));
+                  setEditingPeople(true);
+                }}
+              >
+                Edit people
+              </button>
               <button className="btn" type="button" onClick={() => select(null)}>
                 Close
               </button>
@@ -483,6 +507,50 @@ export function MeetingsPage() {
                 Everyone invited is told. The join link does not change.
               </p>
               {edit.error ? <ErrorNotice error={edit.error} /> : null}
+            </div>
+          ) : null}
+
+          {editingPeople ? (
+            <div className="stack" style={{ gap: 'var(--space-2)' }}>
+              <span className="field__label">Who is coming</span>
+              {members.data ? (
+                <AttendeePicker
+                  members={members.data}
+                  selected={editAttendeeIds}
+                  onToggle={(userId) =>
+                    setEditAttendeeIds((current) =>
+                      current.includes(userId)
+                        ? current.filter((id) => id !== userId)
+                        : [...current, userId],
+                    )
+                  }
+                />
+              ) : (
+                <p className="meta">Loading people…</p>
+              )}
+              <div className="row" style={{ gap: 'var(--space-2)' }}>
+                <button
+                  className="btn btn--primary btn--sm"
+                  type="button"
+                  disabled={editAttendeeIds.length === 0 || updatePeople.isPending}
+                  onClick={() => updatePeople.mutate(selected.id)}
+                >
+                  {updatePeople.isPending ? 'Saving…' : 'Save people'}
+                </button>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  type="button"
+                  onClick={() => setEditingPeople(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="meta">
+                {selected.seriesId
+                  ? 'Anyone new is invited to the whole repeat, and anyone removed is told it is off. A repeat has one guest list, so this covers every occurrence.'
+                  : 'Anyone new is invited, and anyone removed is told the meeting is off.'}
+              </p>
+              {updatePeople.error ? <ErrorNotice error={updatePeople.error} /> : null}
             </div>
           ) : null}
 

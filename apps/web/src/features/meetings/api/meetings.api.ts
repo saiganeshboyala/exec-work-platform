@@ -42,6 +42,14 @@ export const meetingsApi = {
   reschedule: (id: string, body: RescheduleMeetingInput) =>
     apiRequest<MeetingDto>(`/meetings/${id}`, { method: 'PATCH', body }),
 
+  /** The whole guest list, not a change to it. Adds and removals are worked
+   *  out server-side so the calendar invitations follow. */
+  updateAttendees: (id: string, attendeeIds: string[]) =>
+    apiRequest<MeetingDto>(`/meetings/${id}/attendees`, {
+      method: 'PATCH',
+      body: { attendeeIds },
+    }),
+
   cancel: (id: string) => apiRequest<void>(`/meetings/${id}`, { method: 'DELETE' }),
 
   /** Calls off every remaining occurrence of a repeat. */

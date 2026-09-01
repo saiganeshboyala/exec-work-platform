@@ -323,6 +323,41 @@ export class GoogleCalendarProvider implements CalendarProvider {
   }
 
   /**
+   * Replaces the guest list on an event. Google compares it with the one it
+   * holds, so with sendUpdates=all a newcomer is invited and anyone dropped is
+   * told the meeting is off - without disturbing the people already coming or
+   * clearing the RSVPs they have given.
+   *
+   * PATCH rather than PUT: a PUT would need every field of the event, and any
+   * we left out - conferenceData included - would be wiped.
+   */
+  async updateAttendees(
+    externalId: string,
+    attendeeEmails: string[],
+    organizerUserId?: string,
+  ): Promise<void> {
+    if (!organizerUserId) {
+      throw AppError.internal('Google Calendar needs to know whose event to change');
+    }
+
+    const token = await accessTokenFor(organizerUserId);
+    const url = new URL(`${CALENDAR_API}/calendars/primary/events/${externalId}`);
+    url.searchParams.set('sendUpdates', 'all');
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendees: attendeeEmails.map((email) => ({ email })) }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      logger.error({ status: response.status, detail }, 'Google attendee update failed');
+      throw AppError.badRequest(`Google Calendar rejected the change (${response.status})`);
+    }
+  }
+
+  /**
    * Finds one occurrence of a recurring event by the time it was originally due
    * to start. Google gives each instance its own id, and that id is what has to
    * be patched to touch a single week.
