@@ -93,6 +93,7 @@ export function MeetingsPage() {
   const [editStartsAt, setEditStartsAt] = useState('');
   const [editMinutes, setEditMinutes] = useState(30);
   const [editingPeople, setEditingPeople] = useState(false);
+  const [newWorkspace, setNewWorkspace] = useState('');
   const [editAttendeeIds, setEditAttendeeIds] = useState<string[]>([]);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -194,6 +195,17 @@ export function MeetingsPage() {
       setSelected(updated);
       await queryClient.invalidateQueries({ queryKey: ['meetings'] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
+  // Members are allowed to create workspaces, but the page that normally does
+  // it is a manager's. Without this they are told to do something they have no
+  // way to do, and never reach the attendee picker at all.
+  const createWorkspace = useMutation({
+    mutationFn: (name: string) => boardsApi.createWorkspace({ name }),
+    onSuccess: async () => {
+      setNewWorkspace('');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
     },
   });
 
@@ -635,7 +647,15 @@ export function MeetingsPage() {
         </div>
       ) : null}
 
-      {workspaces.data && workspaces.data.length > 0 && members.data ? (
+      {/* Three different reasons the form might not be here, told apart. Rolled
+          into one condition, a slow or failed people lookup used to read as
+          "create a workspace", and someone with no workspace was sent to the
+          Departments page - which members cannot open. */}
+      {workspaces.isPending || members.isPending ? (
+        <SkeletonRows rows={1} height={220} />
+      ) : workspaces.error || members.error ? (
+        <ErrorNotice error={(workspaces.error ?? members.error) as Error} />
+      ) : workspaces.data && workspaces.data.length > 0 && members.data ? (
         <ScheduleMeetingForm
           workspaces={workspaces.data}
           members={members.data}
@@ -643,7 +663,37 @@ export function MeetingsPage() {
           onScheduled={() => select(null)}
         />
       ) : (
-        <p className="meta">Create a workspace before scheduling meetings.</p>
+        <form
+          className="card stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (newWorkspace.trim().length >= 2) createWorkspace.mutate(newWorkspace.trim());
+          }}
+        >
+          <h2 style={{ fontSize: 16, fontWeight: 500 }}>Schedule a meeting</h2>
+          <p className="meta">
+            Meetings belong to a workspace, and you are not on one yet. Name one and it is
+            yours - then the meeting form appears here.
+          </p>
+          <div className="row" style={{ gap: 'var(--space-2)' }}>
+            <input
+              className="field__input"
+              aria-label="Workspace name"
+              placeholder="e.g. Operations"
+              value={newWorkspace}
+              onChange={(event) => setNewWorkspace(event.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn--primary"
+              type="submit"
+              disabled={newWorkspace.trim().length < 2 || createWorkspace.isPending}
+            >
+              {createWorkspace.isPending ? 'Creating…' : 'Create workspace'}
+            </button>
+          </div>
+          {createWorkspace.error ? <ErrorNotice error={createWorkspace.error} /> : null}
+        </form>
       )}
     </div>
   );
