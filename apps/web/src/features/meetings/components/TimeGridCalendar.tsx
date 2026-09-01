@@ -1,6 +1,12 @@
 import type { MeetingDto } from '@ewp/contracts';
 
-import { sameDay, startOfDay } from '@/shared/lib/calendar';
+import {
+  inSchedulingZone,
+  nowInSchedulingZone,
+  sameDay,
+  startOfDay,
+} from '@/shared/lib/calendar';
+import { formatTime } from '@/shared/lib/format';
 
 const ROW_HEIGHT = 46;
 const GUTTER = 58;
@@ -24,17 +30,23 @@ interface Placed {
  * ends up with columns that do not sit on top of each other.
  */
 function place(dayMeetings: MeetingDto[], dayStart: Date, firstHour: number): Placed[] {
-  const sorted = [...dayMeetings].sort(
-    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-  );
+  // dayStart is a wall clock in the scheduling zone, so the meetings are read
+  // as that same clock. Mixing the two would slide every block by the reader's
+  // offset from Central.
+  const startOf = (meeting: MeetingDto): number =>
+    inSchedulingZone(new Date(meeting.startsAt)).getTime();
+  const endOf = (meeting: MeetingDto): number =>
+    inSchedulingZone(new Date(meeting.endsAt)).getTime();
+
+  const sorted = [...dayMeetings].sort((a, b) => startOf(a) - startOf(b));
 
   const clusters: MeetingDto[][] = [];
   let current: MeetingDto[] = [];
   let clusterEnd = 0;
 
   for (const meeting of sorted) {
-    const start = new Date(meeting.startsAt).getTime();
-    const end = new Date(meeting.endsAt).getTime();
+    const start = startOf(meeting);
+    const end = endOf(meeting);
 
     if (current.length > 0 && start < clusterEnd) {
       current.push(meeting);
@@ -51,8 +63,8 @@ function place(dayMeetings: MeetingDto[], dayStart: Date, firstHour: number): Pl
 
   return clusters.flatMap((cluster) =>
     cluster.map((meeting, index) => {
-      const start = new Date(meeting.startsAt).getTime();
-      const end = new Date(meeting.endsAt).getTime();
+      const start = startOf(meeting);
+      const end = endOf(meeting);
 
       return {
         meeting,
@@ -80,17 +92,20 @@ export function TimeGridCalendar({
   selectedId?: string | null;
   onSelect: (meeting: MeetingDto) => void;
 }) {
-  const today = new Date();
+  const today = nowInSchedulingZone();
 
   // A fixed 9-to-5 window hides early and late meetings, so start from the
   // working day and widen to whatever is actually booked.
-  const hours = meetings.flatMap((meeting) => [
-    new Date(meeting.startsAt).getHours(),
-    // A meeting ending exactly on the hour does not need the next row.
-    new Date(meeting.endsAt).getMinutes() === 0
-      ? new Date(meeting.endsAt).getHours() - 1
-      : new Date(meeting.endsAt).getHours(),
-  ]);
+  const hours = meetings.flatMap((meeting) => {
+    const start = inSchedulingZone(new Date(meeting.startsAt));
+    const end = inSchedulingZone(new Date(meeting.endsAt));
+
+    return [
+      start.getUTCHours(),
+      // A meeting ending exactly on the hour does not need the next row.
+      end.getUTCMinutes() === 0 ? end.getUTCHours() - 1 : end.getUTCHours(),
+    ];
+  });
 
   const firstHour = Math.min(8, ...hours.filter((hour) => hour >= 0));
   const lastHour = Math.max(18, ...hours.filter((hour) => hour <= 23));
@@ -125,7 +140,7 @@ export function TimeGridCalendar({
                 color: 'var(--ink-muted)',
               }}
             >
-              {new Intl.DateTimeFormat('en-GB', { weekday: 'short' }).format(day)}
+              {new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' }).format(day)}
             </div>
             <div
               style={{
@@ -142,7 +157,7 @@ export function TimeGridCalendar({
                 color: sameDay(day, today) ? '#fff' : 'var(--ink)',
               }}
             >
-              {day.getDate()}
+              {day.getUTCDate()}
             </div>
           </div>
         ))}
@@ -178,7 +193,7 @@ export function TimeGridCalendar({
         {days.map((day) => {
           const dayStart = startOfDay(day);
           const dayMeetings = meetings.filter((meeting) =>
-            sameDay(new Date(meeting.startsAt), day),
+            sameDay(inSchedulingZone(new Date(meeting.startsAt)), day),
           );
           const placed = place(dayMeetings, dayStart, firstHour);
 
@@ -204,10 +219,7 @@ export function TimeGridCalendar({
                 // Under about half an hour there is only room for one line, and
                 // stacking the time above the title clipped it mid-letter.
                 const compact = height < STACKED_MIN;
-                const time = new Intl.DateTimeFormat('en-GB', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }).format(new Date(meeting.startsAt));
+                const time = formatTime(meeting.startsAt);
 
                 return (
                   <button

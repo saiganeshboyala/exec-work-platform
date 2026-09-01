@@ -1,71 +1,18 @@
-/** Calendar maths, kept out of the component so fast refresh stays happy. */
-
 /**
- * Monday-first grid covering the whole month, padded to six complete weeks so
- * the grid never changes height as you page through months.
+ * Calendar maths, kept out of the component so fast refresh stays happy.
+ *
+ * Everything here works in the scheduling zone rather than the browser's, so
+ * two colleagues in different countries see a meeting on the same day, in the
+ * same cell, at the same hour. The grid days below are "wall clock" dates: a
+ * Date whose UTC fields carry the reading a clock in the scheduling zone shows.
+ * They are turned back into real instants only at the edges - when asking the
+ * API for a range, and when placing a meeting on the grid.
  */
-export function monthGrid(anchor: Date): Date[] {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-  // getDay() is Sunday-based; shift so Monday is 0.
-  const lead = (first.getDay() + 6) % 7;
-
-  const start = new Date(first);
-  start.setDate(first.getDate() - lead);
-
-  return Array.from({ length: 42 }, (_, index) => {
-    const day = new Date(start);
-    day.setDate(start.getDate() + index);
-    return day;
-  });
-}
-
-/** Monday-first week containing the anchor. */
-export function weekGrid(anchor: Date): Date[] {
-  const start = startOfDay(anchor);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(start);
-    day.setDate(start.getDate() + index);
-    return day;
-  });
-}
-
-export function startOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-export function endOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 999);
-  return copy;
-}
 
 /**
- * The window a view needs to fetch. Kept beside the grid maths so the range
- * queried and the range drawn can never drift apart.
- */
-export function rangeFor(view: 'day' | 'week' | 'month', anchor: Date): [Date, Date] {
-  if (view === 'day') return [startOfDay(anchor), endOfDay(anchor)];
-
-  const days = view === 'week' ? weekGrid(anchor) : monthGrid(anchor);
-  return [startOfDay(days[0] as Date), endOfDay(days[days.length - 1] as Date)];
-}
-
-export function sameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-/**
- * The clock meetings are booked against, wherever the person booking happens to
- * be. Everyone types and reads scheduling times in this zone, so a standup is
- * at the same hour of the working day for the team it belongs to.
+ * The clock the whole application runs on, wherever the person using it is.
+ * Times are typed, listed and drawn in this zone, so a standup is at the same
+ * hour of the working day for everyone who looks at it.
  *
  * Central Standard all year, deliberately. Regina keeps UTC-6 and the name CST
  * through the summer, where Chicago would move to CDT - so an hour booked here
@@ -109,12 +56,111 @@ function wallClock(instant: Date, timeZone: string): Date {
     Number(parts.find((part) => part.type === type)?.value ?? 0);
 
   return new Date(
-    Date.UTC(read('year'), read('month') - 1, read('day'), read('hour') % 24, read('minute'), read('second')),
+    Date.UTC(
+      read('year'),
+      read('month') - 1,
+      read('day'),
+      read('hour') % 24,
+      read('minute'),
+      read('second'),
+    ),
   );
 }
 
 function offsetMs(instant: Date, timeZone: string): number {
-  return wallClock(instant, timeZone).getTime() - instant.getTime();
+  // The wall clock is read to the second, so the instant is compared to the
+  // second too. Left in, a millisecond would be counted as part of the offset
+  // and push an end-of-day bound past midnight into the next day.
+  return wallClock(instant, timeZone).getTime() - (instant.getTime() - instant.getMilliseconds());
+}
+
+/** The instant at which the scheduling zone reads that wall clock. */
+function fromWallClock(wall: Date): Date {
+  const guess = new Date(wall.getTime() - offsetMs(wall, SCHEDULING_TIME_ZONE));
+  // A second pass settles a guess that landed on the wrong side of a change.
+  return new Date(wall.getTime() - offsetMs(guess, SCHEDULING_TIME_ZONE));
+}
+
+/**
+ * An instant as the scheduling zone's wall clock, for comparing against grid
+ * days. A meeting late in the evening in Central is the next day's date in
+ * London; this is what stops it being drawn in the wrong cell.
+ */
+export function inSchedulingZone(instant: Date): Date {
+  return wallClock(instant, SCHEDULING_TIME_ZONE);
+}
+
+/** Now, as the scheduling zone reads it. The grid's idea of "today". */
+export function nowInSchedulingZone(): Date {
+  return wallClock(new Date(), SCHEDULING_TIME_ZONE);
+}
+
+/**
+ * Monday-first grid covering the whole month, padded to six complete weeks so
+ * the grid never changes height as you page through months.
+ */
+export function monthGrid(anchor: Date): Date[] {
+  const first = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+  // getUTCDay() is Sunday-based; shift so Monday is 0.
+  const lead = (first.getUTCDay() + 6) % 7;
+
+  const start = new Date(first);
+  start.setUTCDate(first.getUTCDate() - lead);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setUTCDate(start.getUTCDate() + index);
+    return day;
+  });
+}
+
+/** Monday-first week containing the anchor. */
+export function weekGrid(anchor: Date): Date[] {
+  const start = startOfDay(anchor);
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setUTCDate(start.getUTCDate() + index);
+    return day;
+  });
+}
+
+export function startOfDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setUTCHours(0, 0, 0, 0);
+  return copy;
+}
+
+export function endOfDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setUTCHours(23, 59, 59, 999);
+  return copy;
+}
+
+/**
+ * The window a view needs to fetch, as real instants. Kept beside the grid
+ * maths so the range queried and the range drawn can never drift apart.
+ */
+export function rangeFor(view: 'day' | 'week' | 'month', anchor: Date): [Date, Date] {
+  if (view === 'day') {
+    return [fromWallClock(startOfDay(anchor)), fromWallClock(endOfDay(anchor))];
+  }
+
+  const days = view === 'week' ? weekGrid(anchor) : monthGrid(anchor);
+  return [
+    fromWallClock(startOfDay(days[0] as Date)),
+    fromWallClock(endOfDay(days[days.length - 1] as Date)),
+  ];
+}
+
+/** Whether two wall-clock days are the same date in the scheduling zone. */
+export function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
+  );
 }
 
 /**
@@ -130,22 +176,28 @@ export function schedulingInputToDate(value: string): Date {
   const [year, month, day] = date.split('-').map(Number);
   const [hour, minute] = time.split(':').map(Number);
 
-  const wall = Date.UTC(year as number, (month as number) - 1, day as number, hour as number, minute as number);
-  const guess = new Date(wall - offsetMs(new Date(wall), SCHEDULING_TIME_ZONE));
-  // A second pass settles a guess that landed on the wrong side of a clock change.
-  return new Date(wall - offsetMs(guess, SCHEDULING_TIME_ZONE));
+  return fromWallClock(
+    new Date(
+      Date.UTC(
+        year as number,
+        (month as number) - 1,
+        day as number,
+        hour as number,
+        minute as number,
+      ),
+    ),
+  );
 }
 
 /** The reverse: an instant as the scheduling zone's wall clock, for the field. */
 export function dateToSchedulingInput(iso: string | Date): string {
   const instant = typeof iso === 'string' ? new Date(iso) : iso;
-  return wallClock(instant, SCHEDULING_TIME_ZONE).toISOString().slice(0, 16);
+  return inSchedulingZone(instant).toISOString().slice(0, 16);
 }
 
 /** The next whole hour in the scheduling zone, which is what people mean. */
 export function defaultSchedulingStart(): string {
-  const now = new Date();
-  const wall = wallClock(now, SCHEDULING_TIME_ZONE);
+  const wall = nowInSchedulingZone();
   wall.setUTCMinutes(0, 0, 0);
   wall.setUTCHours(wall.getUTCHours() + 1);
   return wall.toISOString().slice(0, 16);

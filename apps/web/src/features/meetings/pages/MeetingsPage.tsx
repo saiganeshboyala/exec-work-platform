@@ -13,13 +13,14 @@ import { SegmentedControl } from '@/shared/components/SegmentedControl';
 import { SkeletonRows } from '@/shared/components/Skeleton';
 import {
   dateToSchedulingInput,
+  nowInSchedulingZone,
   rangeFor,
   SCHEDULING_TIME_ZONE,
   schedulingInputToDate,
   schedulingZoneLabel,
   weekGrid,
 } from '@/shared/lib/calendar';
-import { formatDateTime } from '@/shared/lib/format';
+import { formatDateTimeWithZone } from '@/shared/lib/format';
 
 import { meetingsApi } from '../api/meetings.api';
 import { MonthCalendar } from '../components/MonthCalendar';
@@ -34,7 +35,13 @@ const VIEWS = [
   { value: 'month' as const, label: 'Month' },
 ];
 
-/** What the header says you are looking at, per view. */
+/**
+ * What the header says you are looking at, per view.
+ *
+ * The anchor is a wall clock in the scheduling zone - its UTC fields carry the
+ * reading - so these format as UTC to print the date they hold rather than
+ * shifting it into the reader's own zone.
+ */
 function headingFor(view: CalendarView, anchor: Date): string {
   if (view === 'day') {
     return new Intl.DateTimeFormat('en-GB', {
@@ -42,6 +49,7 @@ function headingFor(view: CalendarView, anchor: Date): string {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
+      timeZone: 'UTC',
     }).format(anchor);
   }
 
@@ -49,25 +57,32 @@ function headingFor(view: CalendarView, anchor: Date): string {
     const days = weekGrid(anchor);
     const first = days[0] as Date;
     const last = days[6] as Date;
-    const sameMonth = first.getMonth() === last.getMonth();
+    const sameMonth = first.getUTCMonth() === last.getUTCMonth();
 
     return `${new Intl.DateTimeFormat('en-GB', {
       day: 'numeric',
+      timeZone: 'UTC',
       ...(sameMonth ? {} : { month: 'short' }),
     }).format(first)} - ${new Intl.DateTimeFormat('en-GB', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
+      timeZone: 'UTC',
     }).format(last)}`;
   }
 
-  return new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(anchor);
+  return new Intl.DateTimeFormat('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(anchor);
 }
 
 export function MeetingsPage() {
   const [params, setParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [anchor, setAnchor] = useState(() => new Date());
+  // The grid runs on the scheduling zone's calendar, not the browser's.
+  const [anchor, setAnchor] = useState(nowInSchedulingZone);
   const [view, setView] = useState<CalendarView>('month');
   const [selected, setSelected] = useState<MeetingDto | null>(null);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
@@ -190,9 +205,9 @@ export function MeetingsPage() {
   // The arrows move by whatever unit is on screen.
   const shift = (steps: number): void => {
     const next = new Date(anchor);
-    if (view === 'day') next.setDate(next.getDate() + steps);
-    else if (view === 'week') next.setDate(next.getDate() + steps * 7);
-    else next.setMonth(next.getMonth() + steps);
+    if (view === 'day') next.setUTCDate(next.getUTCDate() + steps);
+    else if (view === 'week') next.setUTCDate(next.getUTCDate() + steps * 7);
+    else next.setUTCMonth(next.getUTCMonth() + steps);
     setAnchor(next);
   };
 
@@ -209,7 +224,7 @@ export function MeetingsPage() {
     <div className="stack" style={{ gap: 'var(--space-5)' }}>
       <PageHeader
         title="Meetings"
-        subtitle={headingFor(view, anchor)}
+        subtitle={`${headingFor(view, anchor)} · all times ${schedulingZoneLabel()}`}
         actions={
           <>
             <SegmentedControl
@@ -226,7 +241,7 @@ export function MeetingsPage() {
             >
               ←
             </button>
-            <button className="btn" type="button" onClick={() => setAnchor(new Date())}>
+            <button className="btn" type="button" onClick={() => setAnchor(nowInSchedulingZone())}>
               Today
             </button>
             <button
@@ -382,7 +397,7 @@ export function MeetingsPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
             <div>
               <h2 style={{ fontSize: 17, fontWeight: 500 }}>{selected.title}</h2>
-              <p className="meta">{formatDateTime(selected.startsAt)}</p>
+              <p className="meta">{formatDateTimeWithZone(selected.startsAt)}</p>
               <p className="meta">
                 {selected.attendees.map((attendee) => attendee.fullName).join(', ')}
               </p>

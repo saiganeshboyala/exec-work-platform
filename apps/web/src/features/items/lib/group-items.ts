@@ -1,5 +1,6 @@
 import type { ItemDto } from '@ewp/contracts';
 
+import { nowInSchedulingZone } from '@/shared/lib/calendar';
 import { PRIORITY_TONE, STATUS_ORDER, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import type { BoardFilters } from './board-filters';
@@ -13,9 +14,14 @@ export interface ItemGroup {
   createStatus: ItemDto['status'] | null;
 }
 
+/**
+ * Midnight today in the scheduling zone, as a UTC date - the same shape due
+ * dates are stored in. Read from the browser's clock instead, "overdue" would
+ * begin at a different moment for everyone looking at the same board.
+ */
 const startOfToday = (): Date => {
-  const day = new Date();
-  day.setHours(0, 0, 0, 0);
+  const day = nowInSchedulingZone();
+  day.setUTCHours(0, 0, 0, 0);
   return day;
 };
 
@@ -28,7 +34,7 @@ export function applyFilters(
   const term = filters.search.trim().toLowerCase();
   const today = startOfToday();
   const weekEnd = new Date(today);
-  weekEnd.setDate(today.getDate() + 7);
+  weekEnd.setUTCDate(today.getUTCDate() + 7);
 
   return items.filter((item) => {
     if (term !== '' && !item.title.toLowerCase().includes(term)) return false;
@@ -126,7 +132,7 @@ export function groupItems(items: ItemDto[], groupBy: BoardFilters['groupBy']): 
   // Due-date buckets, ordered by urgency rather than by calendar.
   const today = startOfToday();
   const weekEnd = new Date(today);
-  weekEnd.setDate(today.getDate() + 7);
+  weekEnd.setUTCDate(today.getUTCDate() + 7);
 
   const buckets: Array<{ key: string; label: string; color: string; test: (item: ItemDto) => boolean }> = [
     {

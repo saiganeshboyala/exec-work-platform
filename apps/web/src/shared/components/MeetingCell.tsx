@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { CalendarIcon } from '@/shared/components/icons';
+import { SCHEDULING_TIME_ZONE } from '@/shared/lib/calendar';
 import { formatDateTime } from '@/shared/lib/format';
 
 interface NextMeeting {
@@ -33,6 +34,8 @@ export function MeetingCell({ meeting }: { meeting: NextMeeting | null }) {
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
+    timeZone: SCHEDULING_TIME_ZONE,
   }).format(new Date(meeting.startsAt));
 
   const style = {

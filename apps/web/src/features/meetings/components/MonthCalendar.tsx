@@ -1,6 +1,7 @@
 import type { MeetingDto } from '@ewp/contracts';
 
-import { monthGrid, sameDay } from '@/shared/lib/calendar';
+import { inSchedulingZone, monthGrid, nowInSchedulingZone, sameDay } from '@/shared/lib/calendar';
+import { formatTime } from '@/shared/lib/format';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -16,7 +17,7 @@ export function MonthCalendar({
   onSelect: (meeting: MeetingDto) => void;
 }) {
   const days = monthGrid(anchor);
-  const today = new Date();
+  const today = nowInSchedulingZone();
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -39,8 +40,12 @@ export function MonthCalendar({
         ))}
 
         {days.map((day) => {
-          const inMonth = day.getMonth() === anchor.getMonth();
-          const dayMeetings = meetings.filter((meeting) => sameDay(new Date(meeting.startsAt), day));
+          const inMonth = day.getUTCMonth() === anchor.getUTCMonth();
+          // Bucketed by the meeting's date in the scheduling zone, not the
+          // browser's - an evening meeting in Central is tomorrow in London.
+          const dayMeetings = meetings.filter((meeting) =>
+            sameDay(inSchedulingZone(new Date(meeting.startsAt)), day),
+          );
 
           return (
             <div
@@ -74,7 +79,7 @@ export function MonthCalendar({
                   color: sameDay(day, today) ? '#fff' : 'var(--ink-secondary)',
                 }}
               >
-                {day.getDate()}
+                {day.getUTCDate()}
               </span>
 
               {/* A busy day scrolls inside its own cell rather than stretching
@@ -123,10 +128,7 @@ export function MonthCalendar({
                       fontWeight: isSelected ? 600 : 400,
                     }}
                   >
-                    {new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(
-                      new Date(meeting.startsAt),
-                    )}{' '}
-                    {meeting.title}
+                    {formatTime(meeting.startsAt)} {meeting.title}
                   </button>
                   );
                 })}

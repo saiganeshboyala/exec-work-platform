@@ -31,7 +31,10 @@ function wallClock(instant: Date, timeZone: string): Date {
 
 /** How far the zone is from UTC at that moment, daylight saving included. */
 function offsetMs(instant: Date, timeZone: string): number {
-  return wallClock(instant, timeZone).getTime() - instant.getTime();
+  // The wall clock is read to the second, so the instant is compared to the
+  // second too. Left in, a millisecond would be counted as part of the offset
+  // and push an end-of-day bound past midnight into the next day.
+  return wallClock(instant, timeZone).getTime() - (instant.getTime() - instant.getMilliseconds());
 }
 
 /** The instant at which a zone reads that wall clock. */
