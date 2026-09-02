@@ -1,6 +1,6 @@
 import { passwordSchema } from '@ewp/contracts';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 import { ApiError } from '@/shared/api/http-client';
 
@@ -233,6 +233,30 @@ export function LoginPage() {
             </p>
           </>
         )}
+
+        {/* A reviewer, or anyone else, lands on this page first. These have to
+            be reachable from it without an account. */}
+        <p
+          className="meta"
+          style={{
+            marginTop: 'var(--space-4)',
+            paddingTop: 'var(--space-3)',
+            borderTop: '1px solid var(--line)',
+            display: 'flex',
+            gap: 'var(--space-3)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <Link to="/welcome" style={{ color: 'inherit' }}>
+            About Todo
+          </Link>
+          <Link to="/privacy" style={{ color: 'inherit' }}>
+            Privacy
+          </Link>
+          <Link to="/terms" style={{ color: 'inherit' }}>
+            Terms
+          </Link>
+        </p>
       </div>
     </main>
   );

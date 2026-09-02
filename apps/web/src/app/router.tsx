@@ -4,6 +4,7 @@ import { AdminPage } from '@/features/admin';
 import { LoginPage } from '@/features/auth';
 import { BoardPage, BoardsPage } from '@/features/boards';
 import { DashboardPage } from '@/features/dashboard';
+import { PrivacyPage, TermsPage, WelcomePage } from '@/features/legal';
 import { MeetingsPage } from '@/features/meetings';
 import { MembersPage } from '@/features/members';
 
@@ -16,6 +17,13 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/sign-in" element={<LoginPage />} />
+
+      {/* Public by requirement, not by accident. Google will not grant a
+          sensitive scope without reaching the homepage, the privacy policy and
+          the terms signed out, on the same domain as the OAuth redirect. */}
+      <Route path="/welcome" element={<WelcomePage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
 
       <Route
         element={
