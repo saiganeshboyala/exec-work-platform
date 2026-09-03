@@ -520,18 +520,21 @@ export function MeetingsPage() {
                   Cancel
                 </button>
               </div>
-              {selected.seriesId === null ? (
-                <div className="stack" style={{ gap: 4 }}>
-                  <span className="field__label">Repeats</span>
-                  <RepeatPicker value={editRepeat} onChange={setEditRepeat} />
-                </div>
-              ) : null}
-              <p className="meta">
-                {selected.seriesId !== null
-                  ? 'One occurrence of a repeat. Moving it leaves the rest where they are.'
-                  : editRepeat
-                    ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
-                    : 'Everyone invited is told. The join link does not change.'}
+              <div className="stack" style={{ gap: 4 }}>
+                <span className="field__label">Repeats</span>
+                <RepeatPicker value={editRepeat} onChange={setEditRepeat} />
+              </div>
+              <p
+                className="meta"
+                style={selected.seriesId !== null && editRepeat ? { color: 'var(--at-risk)' } : undefined}
+              >
+                {selected.seriesId !== null && editRepeat
+                  ? 'Changes the whole repeat: every upcoming occurrence is cancelled and the new pattern is booked in its place. One cancellation and one new invitation each, and a new join link.'
+                  : selected.seriesId !== null
+                    ? 'One occurrence of a repeat. Moving it leaves the rest where they are - choose a pattern above to rebuild the whole repeat.'
+                    : editRepeat
+                      ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
+                      : 'Everyone invited is told. The join link does not change.'}
               </p>
               {edit.error ? <ErrorNotice error={edit.error} /> : null}
             </div>

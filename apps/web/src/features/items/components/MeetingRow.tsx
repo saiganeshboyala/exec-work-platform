@@ -152,18 +152,21 @@ export function MeetingRow({
             Cancel
           </button>
         </div>
-        {next.seriesId === null ? (
-          <div className="stack" style={{ gap: 4 }}>
-            <span className="field__label">Repeats</span>
-            <RepeatPicker value={repeat} onChange={setRepeat} />
-          </div>
-        ) : null}
-        <p className="meta">
-          {next.seriesId !== null
-            ? 'One occurrence of a repeat. Moving it leaves the rest where they are.'
-            : repeat
-              ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
-              : 'Everyone invited is told. The join link does not change.'}
+        <div className="stack" style={{ gap: 4 }}>
+          <span className="field__label">Repeats</span>
+          <RepeatPicker value={repeat} onChange={setRepeat} />
+        </div>
+        <p
+          className="meta"
+          style={next.seriesId !== null && repeat ? { color: 'var(--at-risk)' } : undefined}
+        >
+          {next.seriesId !== null && repeat
+            ? 'Changes the whole repeat: every upcoming occurrence is cancelled and the new pattern is booked in its place. One cancellation and one new invitation each, and a new join link.'
+            : next.seriesId !== null
+              ? 'One occurrence of a repeat. Moving it leaves the rest where they are - choose a pattern above to rebuild the whole repeat.'
+              : repeat
+                ? 'Everyone invited is told, and the rest of the repeat is added. The join link does not change.'
+                : 'Everyone invited is told. The join link does not change.'}
         </p>
         {reschedule.error ? <ErrorNotice error={reschedule.error} /> : null}
       </div>

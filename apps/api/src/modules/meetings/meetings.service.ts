@@ -387,11 +387,36 @@ export const meetingsService = {
       throw AppError.forbidden('Only the organiser or a manager can move this meeting');
     }
 
-    // Adding a pattern to something that already has one would mean rebuilding
-    // the series around a new rule, and every attendee being re-invited to it.
+    // Repatterning a series. There is no way to edit a rule in place without
+    // reasoning about which occurrences moved and which did not, so the whole
+    // thing is called off and booked again to the new pattern.
+    //
+    // Everyone gets one cancellation and one fresh invitation - not one per
+    // occurrence - because the old series is a single recurring event and so is
+    // the new one. The join link changes, since the new series is a new event.
     if (input.repeat && meeting.seriesId) {
-      throw AppError.badRequest(
-        'This meeting already repeats. Cancel the repeat and schedule it again to change the pattern.',
+      const agenda = await prisma.meetingAgendaItem.findMany({
+        where: { meetingId, chosen: true, item: { deletedAt: null } },
+        select: { itemId: true },
+        orderBy: { position: 'asc' },
+      });
+
+      await this.cancelSeries(auth, meetingId, requestId);
+
+      return this.schedule(
+        auth,
+        {
+          workspaceId: meeting.workspaceId,
+          title: input.title ?? meeting.title,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          attendeeIds: meeting.attendees.map((a) => a.userId),
+          itemIds: agenda.map((row) => row.itemId),
+          repeat: input.repeat,
+          ...(meeting.location ? { location: meeting.location } : {}),
+          ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+        },
+        requestId,
       );
     }
 

@@ -6,3 +6,4 @@ export const dashboardApi = {
   executive: (workspaceId?: string) =>
     apiRequest<ExecutiveDashboardDto>('/dashboard/executive', { query: { workspaceId } }),
 };
+
