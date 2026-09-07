@@ -347,3 +347,11 @@ button {
     background-position: 0 50%;
   }
 }
+
+/* The notebook is two panes side by side, and one above the other once the
+   list and the editor can no longer both be read at a usable width. */
+@media (max-width: 860px) {
+  .notes-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

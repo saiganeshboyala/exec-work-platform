@@ -87,6 +87,7 @@ model Organization {
   scopedAccess        ScopedAccess[]
 
   @@map("organizations")
+  notes             Note[]
 }
 
 model User {
@@ -102,6 +103,7 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   memberships       Membership[]
+  notes             Note[]
   ownedItems        Item[]              @relation("ItemOwner")
   authoredItems     Item[]              @relation("ItemAuthor")
   refreshTokens     RefreshToken[]
@@ -478,6 +480,31 @@ model Comment {
 
   @@index([itemId, createdAt])
   @@map("comments")
+}
+
+/// A personal notebook entry. Deliberately attached to nothing: notes are the
+/// place for the thought that has not become a task yet, and forcing one to
+/// belong to a department would stop it being written down at all.
+///
+/// Private to whoever wrote it. This is the one thing in the product an owner
+/// does not see - a notebook read by somebody else is not a notebook.
+model Note {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  authorId       String    @db.Uuid
+  title          String    @db.VarChar(200)
+  body           String    @db.VarChar(20000)
+  /// Kept at the top of the list, for the handful worth coming back to.
+  pinned         Boolean   @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId, pinned, updatedAt])
+  @@map("notes")
 }
 
 enum FieldType {

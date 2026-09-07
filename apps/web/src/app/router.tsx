@@ -7,6 +7,7 @@ import { DashboardPage } from '@/features/dashboard';
 import { PrivacyPage, TermsPage, WelcomePage } from '@/features/legal';
 import { MeetingsPage } from '@/features/meetings';
 import { MembersPage } from '@/features/members';
+import { NotesPage } from '@/features/notes';
 
 import { AppShell } from './layout/AppShell';
 import { RequireAuth } from './RequireAuth';
@@ -45,6 +46,9 @@ export function AppRouter() {
             API already limits a member to the departments they are actually on. */}
         <Route path="boards/:boardId" element={<BoardPage />} />
         <Route path="meetings" element={<MeetingsPage />} />
+        {/* Open to every role: the service keys notes on their author, so
+            there is nothing here a person could reach that is not theirs. */}
+        <Route path="notes" element={<NotesPage />} />
         <Route
           path="people"
           element={

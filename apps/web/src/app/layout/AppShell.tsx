@@ -17,6 +17,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/', label: 'Todo', icon: '◈', end: true },
       { to: '/meetings', label: 'Meetings', icon: '▤', end: false },
+      { to: '/notes', label: 'Notes', icon: '✎', end: false },
     ],
   },
   {

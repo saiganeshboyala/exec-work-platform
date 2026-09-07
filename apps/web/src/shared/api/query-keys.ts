@@ -10,6 +10,7 @@ export const queryKeys = {
   board: (boardId: string) => ['board', boardId] as const,
   items: (filters: Record<string, unknown>) => ['items', filters] as const,
   boardItems: (boardId: string) => ['items', 'board', boardId] as const,
+  notes: (search: string) => ['notes', search] as const,
   members: ['members'] as const,
   invitations: ['invitations'] as const,
 } as const;

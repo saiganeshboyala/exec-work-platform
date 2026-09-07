@@ -7,6 +7,7 @@ export * from './member.contract';
 export * from './board.contract';
 export * from './item.contract';
 export * from './meeting.contract';
+export * from './note.contract';
 export * from './notification.contract';
 export * from './view.contract';
 export * from './collaboration.contract';
