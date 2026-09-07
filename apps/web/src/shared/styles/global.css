@@ -247,6 +247,18 @@ button {
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 
+/* The 36px above is a one-line control's height, and a textarea inheriting it
+   is two lines tall with everything else behind a scrollbar however many rows
+   it asks for. Height comes from `rows` here, and the padding gains a top and
+   bottom the single-line version does not need. */
+textarea.field__input {
+  height: auto;
+  min-height: 84px;
+  padding: var(--space-2) var(--space-3);
+  line-height: 1.6;
+  resize: vertical;
+}
+
 .field__input:focus {
   outline: none;
   border-color: var(--accent);

@@ -85,9 +85,9 @@ model Organization {
   fieldDefinitions    FieldDefinition[]
   automations         Automation[]
   scopedAccess        ScopedAccess[]
+  notes               Note[]
 
   @@map("organizations")
-  notes             Note[]
 }
 
 model User {
@@ -102,21 +102,21 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  memberships       Membership[]
-  notes             Note[]
-  ownedItems        Item[]              @relation("ItemOwner")
-  authoredItems     Item[]              @relation("ItemAuthor")
-  refreshTokens     RefreshToken[]
-  activities        Activity[]
-  attendances       MeetingAttendee[]
-  decisions         Decision[]
-  pushSubscriptions PushSubscription[]
-  notifications     Notification[]
+  memberships        Membership[]
+  notes              Note[]
+  ownedItems         Item[]              @relation("ItemOwner")
+  authoredItems      Item[]              @relation("ItemAuthor")
+  refreshTokens      RefreshToken[]
+  activities         Activity[]
+  attendances        MeetingAttendee[]
+  decisions          Decision[]
+  pushSubscriptions  PushSubscription[]
+  notifications      Notification[]
   calendarConnection CalendarConnection?
-  savedViews        SavedView[]
-  comments          Comment[]
-  scopedAccess      ScopedAccess[]
-  assignments       ItemAssignee[]
+  savedViews         SavedView[]
+  comments           Comment[]
+  scopedAccess       ScopedAccess[]
+  assignments        ItemAssignee[]
 
   @@index([deletedAt])
   @@map("users")
@@ -161,19 +161,19 @@ model RefreshToken {
 }
 
 model Invitation {
-  id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid
-  email          String           @db.VarChar(254)
-  role           Role             @default(MEMBER)
-  tokenHash      String           @unique @db.VarChar(255)
-  status         InvitationStatus @default(PENDING)
-  invitedById    String           @db.Uuid
-  message        String?          @db.VarChar(500)
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @db.Uuid
+  email            String           @db.VarChar(254)
+  role             Role             @default(MEMBER)
+  tokenHash        String           @unique @db.VarChar(255)
+  status           InvitationStatus @default(PENDING)
+  invitedById      String           @db.Uuid
+  message          String?          @db.VarChar(500)
   /// Set by the email worker once the provider accepts the message.
   emailDeliveredAt DateTime?
-  acceptedAt     DateTime?
-  expiresAt      DateTime
-  createdAt      DateTime         @default(now())
+  acceptedAt       DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime         @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -191,7 +191,7 @@ model Workspace {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   boards       Board[]
   meetings     Meeting[]
   scopedAccess ScopedAccess[]
@@ -212,8 +212,8 @@ model Board {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  items     Item[]
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items            Item[]
   savedViews       SavedView[]
   fieldDefinitions FieldDefinition[]
   automations      Automation[]
@@ -224,38 +224,39 @@ model Board {
 }
 
 model Item {
-  id             String     @id @default(uuid()) @db.Uuid
-  boardId        String     @db.Uuid
-  parentId       String?    @db.Uuid
-  title          String     @db.VarChar(300)
-  description    String?
-  status         ItemStatus @default(NOT_STARTED)
-  priority       Priority   @default(MEDIUM)
-  ownerId        String?    @db.Uuid
+  id            String     @id @default(uuid()) @db.Uuid
+  boardId       String     @db.Uuid
+  parentId      String?    @db.Uuid
+  title         String     @db.VarChar(300)
+  description   String?
+  status        ItemStatus @default(NOT_STARTED)
+  priority      Priority   @default(MEDIUM)
+  ownerId       String?    @db.Uuid
   /// Who raised it. Kept so the author can still find a task they created and
   /// then handed to somebody else.
-  createdById    String?    @db.Uuid
-  startDate      DateTime?
-  dueDate        DateTime?
-  blockedReason  String?    @db.VarChar(500)
-  completedAt    DateTime?
-  position       Int        @default(0)
-  deletedAt      DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdById   String?    @db.Uuid
+  startDate     DateTime?
+  dueDate       DateTime?
+  blockedReason String?    @db.VarChar(500)
+  completedAt   DateTime?
+  position      Int        @default(0)
+  deletedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
-  board     Board             @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  parent    Item?             @relation("ItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  subitems  Item[]            @relation("ItemHierarchy")
-  owner     User?             @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdBy User?             @relation("ItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
-  agendaFor MeetingAgendaItem[]
-  decisions Decision[]
+  board       Board               @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  parent      Item?               @relation("ItemHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subitems    Item[]              @relation("ItemHierarchy")
+  owner       User?               @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy   User?               @relation("ItemAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  agendaFor   MeetingAgendaItem[]
+  decisions   Decision[]
   comments    Comment[]
   fieldValues FieldValue[]
-  blockedBy   ItemDependency[] @relation("BlockedBy")
-  blocking    ItemDependency[] @relation("Blocking")
+  blockedBy   ItemDependency[]    @relation("BlockedBy")
+  blocking    ItemDependency[]    @relation("Blocking")
   assignees   ItemAssignee[]
+  notes       Note[]
 
   @@index([boardId, status, deletedAt])
   @@index([ownerId, dueDate])
@@ -305,9 +306,9 @@ model MeetingAttendee {
 }
 
 model MeetingAgendaItem {
-  meetingId String @db.Uuid
-  itemId    String @db.Uuid
-  position  Int    @default(0)
+  meetingId String  @db.Uuid
+  itemId    String  @db.Uuid
+  position  Int     @default(0)
   /// True when the organiser put this task on the agenda, false when it was
   /// swept in for being blocked or overdue. Only the first kind means the
   /// meeting is about that task.
@@ -454,8 +455,8 @@ model ItemDependency {
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  blockedItem  Item @relation("BlockedBy", fields: [blockedItemId], references: [id], onDelete: Cascade)
-  blockingItem Item @relation("Blocking", fields: [blockingItemId], references: [id], onDelete: Cascade)
+  blockedItem  Item         @relation("BlockedBy", fields: [blockedItemId], references: [id], onDelete: Cascade)
+  blockingItem Item         @relation("Blocking", fields: [blockingItemId], references: [id], onDelete: Cascade)
 
   @@unique([blockedItemId, blockingItemId])
   @@index([blockingItemId])
@@ -494,6 +495,11 @@ model Note {
   authorId       String    @db.Uuid
   title          String    @db.VarChar(200)
   body           String    @db.VarChar(20000)
+  /// Optional: a note about a particular task. Null is the normal case, and
+  /// stays possible - a note that must belong to something is not a note.
+  /// SetNull rather than Cascade, so deleting the task keeps what was written
+  /// about it.
+  itemId         String?   @db.Uuid
   /// Kept at the top of the list, for the handful worth coming back to.
   pinned         Boolean   @default(false)
   deletedAt      DateTime?
@@ -502,8 +508,10 @@ model Note {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  item         Item?        @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([authorId, pinned, updatedAt])
+  @@index([itemId])
   @@map("notes")
 }
 

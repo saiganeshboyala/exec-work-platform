@@ -1,7 +1,9 @@
 import type { NoteDto } from '@ewp/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
+import { itemsApi } from '@/features/items';
 import { queryKeys } from '@/shared/api/query-keys';
 import { ErrorNotice } from '@/shared/components/ErrorNotice';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -44,6 +46,16 @@ export function NotesPage() {
 
   const invalidate = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: ['notes'] }).then(() => undefined);
+
+  // Every task the writer can see, for the picker. The same list the rest of
+  // the app uses, so a note can only be linked to work they could already open.
+  const tasks = useQuery({ queryKey: ['items', 'all'], queryFn: itemsApi.listAll });
+
+  const linkTask = useMutation({
+    mutationFn: (next: { id: string; itemId: string | null }) =>
+      notesApi.update(next.id, { itemId: next.itemId }),
+    onSuccess: invalidate,
+  });
 
   const create = useMutation({
     mutationFn: () => notesApi.create({ title: 'Untitled note', body: '', pinned: false }),
@@ -180,6 +192,7 @@ export function NotesPage() {
                       {note.body.trim() === '' ? 'Empty' : note.body}
                     </span>
                     <span className="meta" style={{ fontSize: 'var(--text-xs)' }}>
+                      {note.itemTitle ? `◈ ${note.itemTitle} · ` : ''}
                       {formatDateTime(note.updatedAt)}
                     </span>
                   </button>
@@ -226,6 +239,34 @@ export function NotesPage() {
               </span>
             </div>
 
+            <div className="row" style={{ gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <span className="meta" style={{ whiteSpace: 'nowrap' }}>
+                Linked task
+              </span>
+              <select
+                className="field__input"
+                aria-label="Link this note to a task"
+                value={open.itemId ?? ''}
+                onChange={(event) =>
+                  linkTask.mutate({ id: open.id, itemId: event.target.value || null })
+                }
+                style={{ flex: 1, minWidth: 180 }}
+              >
+                <option value="">Not linked</option>
+                {tasks.data?.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title}
+                  </option>
+                ))}
+              </select>
+              {open.itemId ? (
+                <Link className="btn btn--sm" to={`/?item=${open.itemId}`}>
+                  Open task
+                </Link>
+              ) : null}
+            </div>
+            {linkTask.error ? <ErrorNotice error={linkTask.error} /> : null}
+
             <textarea
               className="field__input"
               aria-label="Note"
@@ -233,7 +274,6 @@ export function NotesPage() {
               value={draft.body}
               onChange={(event) => setDraft({ ...draft, body: event.target.value })}
               rows={18}
-              style={{ resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' }}
             />
 
             <div className="row" style={{ justifyContent: 'space-between', gap: 'var(--space-3)' }}>

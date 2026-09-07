@@ -9,6 +9,8 @@ export const createNoteSchema = z.object({
   title: z.string().min(1).max(200).trim(),
   body: z.string().max(20_000).default(''),
   pinned: z.boolean().default(false),
+  /** A note about a particular task. Null, and normally absent, is fine. */
+  itemId: z.string().uuid().nullable().optional(),
 });
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 
@@ -18,6 +20,8 @@ export const updateNoteSchema = z
     title: z.string().min(1).max(200).trim().optional(),
     body: z.string().max(20_000).optional(),
     pinned: z.boolean().optional(),
+    /** Explicit null unlinks; absent leaves the link alone. */
+    itemId: z.string().uuid().nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Nothing to change',
@@ -35,6 +39,10 @@ export interface NoteDto {
   title: string;
   body: string;
   pinned: boolean;
+  /** The task this note is about, if any. */
+  itemId: string | null;
+  /** Carried alongside the id so a list of notes need not fetch every task. */
+  itemTitle: string | null;
   createdAt: string;
   updatedAt: string;
 }

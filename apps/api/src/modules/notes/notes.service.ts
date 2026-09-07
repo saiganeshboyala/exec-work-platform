@@ -3,20 +3,31 @@ import type { CreateNoteInput, ListNotesQuery, NoteDto, UpdateNoteInput } from '
 import { AppError } from '@/common/errors';
 import type { AuthContext } from '@/common/types/express';
 import { prisma } from '@/database';
+import { itemsService } from '@/modules/items';
+
+const withItem = { item: { select: { id: true, title: true, deletedAt: true } } } as const;
 
 function toDto(row: {
   id: string;
   title: string;
   body: string;
   pinned: boolean;
+  itemId: string | null;
+  item?: { id: string; title: string; deletedAt: Date | null } | null;
   createdAt: Date;
   updatedAt: Date;
 }): NoteDto {
+  // A deleted task is not one to link to any more, so the note reads as
+  // unlinked rather than pointing at something that will not open.
+  const linked = row.item && row.item.deletedAt === null ? row.item : null;
+
   return {
     id: row.id,
     title: row.title,
     body: row.body,
     pinned: row.pinned,
+    itemId: linked?.id ?? null,
+    itemTitle: linked?.title ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -55,6 +66,7 @@ export const notesService = {
       // Pinned first, then whatever was touched most recently - which is almost
       // always the one being come back to.
       orderBy: [{ pinned: 'desc' }, { updatedAt: 'desc' }],
+      include: withItem,
     });
 
     return rows.map(toDto);
@@ -66,7 +78,22 @@ export const notesService = {
     return row;
   },
 
+  /**
+   * Checks a task may be linked before it is written on a note.
+   *
+   * Through itemsService, so it is the same visibility rule the rest of the
+   * product applies: you can only attach a note to work you could already open.
+   * Otherwise the note's own title field would confirm whether a guessed id
+   * exists.
+   */
+  async assertLinkable(auth: AuthContext, itemId: string | null | undefined): Promise<void> {
+    if (!itemId) return;
+    await itemsService.getOrFail(auth, itemId);
+  },
+
   async create(auth: AuthContext, input: CreateNoteInput): Promise<NoteDto> {
+    await this.assertLinkable(auth, input.itemId);
+
     const row = await prisma.note.create({
       data: {
         organizationId: auth.organizationId,
@@ -74,7 +101,9 @@ export const notesService = {
         title: input.title,
         body: input.body,
         pinned: input.pinned,
+        itemId: input.itemId ?? null,
       },
+      include: withItem,
     });
 
     return toDto(row);
@@ -82,6 +111,7 @@ export const notesService = {
 
   async update(auth: AuthContext, id: string, input: UpdateNoteInput): Promise<NoteDto> {
     await this.getOrFail(auth, id);
+    await this.assertLinkable(auth, input.itemId);
 
     const row = await prisma.note.update({
       where: { id },
@@ -89,7 +119,11 @@ export const notesService = {
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.body !== undefined ? { body: input.body } : {}),
         ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+        // Explicit null unlinks; absent leaves it alone. Both are meaningful,
+        // so this reads `undefined` rather than falsiness.
+        ...(input.itemId !== undefined ? { itemId: input.itemId } : {}),
       },
+      include: withItem,
     });
 
     return toDto(row);
