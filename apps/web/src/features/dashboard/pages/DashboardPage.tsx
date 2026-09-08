@@ -211,6 +211,22 @@ export function DashboardPage() {
               <option value="none">No date</option>
             </select>
 
+            <select
+              aria-label="Filter by meeting"
+              value={filters.meeting}
+              onChange={(event) =>
+                setFilters({ ...filters, meeting: event.target.value as BoardFilters['meeting'] })
+              }
+              style={selectStyle}
+            >
+              <option value="any">Any meeting</option>
+              <option value="today">Meeting today</option>
+              <option value="tomorrow">Meeting tomorrow</option>
+              <option value="week">Meeting this week</option>
+              <option value="scheduled">Has a meeting</option>
+              <option value="none">No meeting</option>
+            </select>
+
             <button
               type="button"
               className="chip"

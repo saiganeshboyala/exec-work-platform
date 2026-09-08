@@ -9,6 +9,21 @@ export const DUE_WINDOWS = ['any', 'overdue', 'today', 'week', 'none'] as const;
 export type DueWindow = (typeof DUE_WINDOWS)[number];
 
 /**
+ * When the task is next being discussed, as opposed to when it is due. The two
+ * are different questions - "what am I in a room about tomorrow" is not
+ * answered by a due date - so they filter independently.
+ */
+export const MEETING_WINDOWS = [
+  'any',
+  'scheduled',
+  'none',
+  'today',
+  'tomorrow',
+  'week',
+] as const;
+export type MeetingWindow = (typeof MEETING_WINDOWS)[number];
+
+/**
  * The filter shape is defined once here and stored verbatim on SavedView, so
  * the client and the server never disagree about what a saved view means.
  */
@@ -18,6 +33,8 @@ export const boardFiltersSchema = z.object({
   priority: z.enum([...PRIORITIES, 'any']).default('any'),
   status: z.enum([...ITEM_STATUSES, 'any']).default('any'),
   due: z.enum(DUE_WINDOWS).default('any'),
+  // Defaulted, so a view saved before this existed still parses.
+  meeting: z.enum(MEETING_WINDOWS).default('any'),
   groupBy: z.enum(GROUP_BY).default('none'),
   hideDone: z.boolean().default(false),
 });

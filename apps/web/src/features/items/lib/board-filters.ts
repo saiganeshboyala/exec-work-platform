@@ -1,10 +1,10 @@
-import type { BoardFilters, DueWindow, GroupBy } from '@ewp/contracts';
+import type { BoardFilters, DueWindow, GroupBy, MeetingWindow } from '@ewp/contracts';
 
 /**
  * The filter shape itself lives in @ewp/contracts, because a saved view stores
  * it server-side. This module only adds the client-side defaults and helpers.
  */
-export type { BoardFilters, DueWindow, GroupBy };
+export type { BoardFilters, DueWindow, GroupBy, MeetingWindow };
 
 export const DEFAULT_FILTERS: BoardFilters = {
   search: '',
@@ -12,6 +12,7 @@ export const DEFAULT_FILTERS: BoardFilters = {
   priority: 'any',
   status: 'any',
   due: 'any',
+  meeting: 'any',
   groupBy: 'none',
   hideDone: false,
 };
@@ -24,6 +25,7 @@ export function isFiltered(filters: BoardFilters): boolean {
     filters.priority !== 'any' ||
     filters.status !== 'any' ||
     filters.due !== 'any' ||
+    filters.meeting !== 'any' ||
     filters.hideDone
   );
 }

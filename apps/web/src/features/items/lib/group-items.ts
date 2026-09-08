@@ -1,6 +1,6 @@
 import type { ItemDto } from '@ewp/contracts';
 
-import { nowInSchedulingZone } from '@/shared/lib/calendar';
+import { inSchedulingZone, nowInSchedulingZone } from '@/shared/lib/calendar';
 import { PRIORITY_TONE, STATUS_ORDER, STATUS_TONE } from '@/shared/lib/item-meta';
 
 import type { BoardFilters } from './board-filters';
@@ -24,6 +24,36 @@ const startOfToday = (): Date => {
   day.setUTCHours(0, 0, 0, 0);
   return day;
 };
+
+/**
+ * Whether a task's next meeting falls in the window asked for.
+ *
+ * The meeting is an instant; the window is a run of days. Which day an instant
+ * falls on depends on whose clock you read it by, so it is converted to the
+ * scheduling zone first - an evening meeting in Central is tomorrow in London,
+ * and "meeting today" has to mean the same thing to both of them.
+ */
+function passesMeetingFilter(
+  item: ItemDto,
+  window: BoardFilters['meeting'],
+  today: Date,
+): boolean {
+  const next = item.nextMeeting;
+
+  if (window === 'none') return next === null;
+  if (next === null) return false;
+  if (window === 'scheduled') return true;
+
+  const day = inSchedulingZone(new Date(next.startsAt));
+  day.setUTCHours(0, 0, 0, 0);
+
+  const daysAway = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+
+  if (window === 'today') return daysAway === 0;
+  if (window === 'tomorrow') return daysAway === 1;
+  // The coming week, today included, and never anything already past.
+  return daysAway >= 0 && daysAway <= 7;
+}
 
 /** Filtering and grouping are pure so the board stays trivially testable. */
 export function applyFilters(
@@ -54,6 +84,10 @@ export function applyFilters(
       filters.ownerId !== 'none' &&
       !people.includes(filters.ownerId)
     ) {
+      return false;
+    }
+
+    if (filters.meeting !== 'any' && !passesMeetingFilter(item, filters.meeting, today)) {
       return false;
     }
 

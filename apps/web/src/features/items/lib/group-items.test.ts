@@ -1,5 +1,7 @@
-import type { ItemDto } from '@ewp/contracts';
+import type { BoardFilters, ItemDto } from '@ewp/contracts';
 import { describe, expect, it } from 'vitest';
+
+import { nowInSchedulingZone } from '@/shared/lib/calendar';
 
 import { DEFAULT_FILTERS } from './board-filters';
 import { applyFilters, groupItems } from './group-items';
@@ -112,5 +114,72 @@ describe('groupItems', () => {
 
     expect(groups.map((group) => group.items.length)).toEqual([1, 1, 1, 1]);
     expect(groups.flatMap((group) => group.items)).toHaveLength(items.length);
+  });
+});
+
+describe('filtering by when the task is next discussed', () => {
+  /** A meeting at 14:00 Central on the day `offsetDays` from today. */
+  const meetingOn = (offsetDays: number): ItemDto['nextMeeting'] => {
+    const day = nowInSchedulingZone();
+    day.setUTCDate(day.getUTCDate() + offsetDays);
+    day.setUTCHours(14, 0, 0, 0);
+
+    return {
+      id: 'm1',
+      title: 'Review',
+      // Back to a real instant: Central is behind UTC, so 14:00 there is the
+      // evening here, which is the case that catches a naive implementation.
+      startsAt: new Date(day.getTime() + 5 * 3_600_000).toISOString(),
+      joinUrl: null,
+    };
+  };
+
+  const withMeeting = (offsetDays: number) => item({ nextMeeting: meetingOn(offsetDays) });
+  const withoutMeeting = () => item({ nextMeeting: null });
+
+  const only = (window: BoardFilters['meeting'], items: ItemDto[]) =>
+    applyFilters(items, { ...DEFAULT_FILTERS, meeting: window }, undefined);
+
+  it('leaves everything alone by default', () => {
+    const items = [withMeeting(0), withoutMeeting()];
+
+    expect(only('any', items)).toHaveLength(2);
+  });
+
+  it('finds what is being discussed today, and not tomorrow', () => {
+    const today = withMeeting(0);
+    const items = [today, withMeeting(1), withoutMeeting()];
+
+    expect(only('today', items)).toEqual([today]);
+  });
+
+  it('finds tomorrow without catching today', () => {
+    const tomorrow = withMeeting(1);
+    const items = [withMeeting(0), tomorrow, withMeeting(9)];
+
+    expect(only('tomorrow', items)).toEqual([tomorrow]);
+  });
+
+  it('covers the coming week, today included, and stops at seven days', () => {
+    const items = [withMeeting(0), withMeeting(3), withMeeting(7), withMeeting(8)];
+
+    expect(only('week', items)).toHaveLength(3);
+  });
+
+  it('separates having a meeting from having none', () => {
+    const scheduled = withMeeting(4);
+    const bare = withoutMeeting();
+
+    expect(only('scheduled', [scheduled, bare])).toEqual([scheduled]);
+    expect(only('none', [scheduled, bare])).toEqual([bare]);
+  });
+
+  it('is a different question from the due date', () => {
+    // Due next month, discussed tomorrow. A due-date filter would miss it,
+    // which is the whole reason this filter exists.
+    const soonDiscussed = item({ dueDate: iso(30), nextMeeting: meetingOn(1) });
+
+    expect(only('tomorrow', [soonDiscussed])).toEqual([soonDiscussed]);
+    expect(applyFilters([soonDiscussed], { ...DEFAULT_FILTERS, due: 'week' }, undefined)).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import {
   isFiltered,
   type BoardFilters,
   type DueWindow,
+  type MeetingWindow,
 } from '../lib/board-filters';
 
 const selectStyle = {
@@ -104,6 +105,20 @@ export function BoardToolbar({
         <option value="today">Due today</option>
         <option value="week">Due this week</option>
         <option value="none">No date</option>
+      </select>
+
+      <select
+        aria-label="Filter by meeting"
+        value={filters.meeting}
+        onChange={(event) => set('meeting', event.target.value as MeetingWindow)}
+        style={selectStyle}
+      >
+        <option value="any">Any meeting</option>
+        <option value="today">Meeting today</option>
+        <option value="tomorrow">Meeting tomorrow</option>
+        <option value="week">Meeting this week</option>
+        <option value="scheduled">Has a meeting</option>
+        <option value="none">No meeting</option>
       </select>
 
       <button
