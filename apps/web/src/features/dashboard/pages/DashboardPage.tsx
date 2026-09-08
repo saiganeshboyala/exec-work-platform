@@ -21,7 +21,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { SkeletonCards, SkeletonRows } from '@/shared/components/Skeleton';
 import { formatDateTime } from '@/shared/lib/format';
 
-import { KpiCard } from '../components/KpiCard';
+import { DepartmentCard } from '../components/DepartmentCard';
 import { TodoTaskTable } from '../components/TodoTaskTable';
 import { useExecutiveDashboard } from '../hooks/useExecutiveDashboard';
 
@@ -131,18 +131,29 @@ export function DashboardPage() {
         }
       />
 
-      <section
-        aria-label="Key figures"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 'var(--space-3)',
-        }}
-      >
-        {data.kpis.map((kpi) => (
-          <KpiCard key={kpi.key} kpi={kpi} />
-        ))}
-      </section>
+      {data.portfolio.length > 0 ? (
+        <section
+          aria-label="Departments"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 'var(--space-3)',
+          }}
+        >
+          {data.portfolio.map((row) => (
+            <DepartmentCard
+              key={row.boardId}
+              row={row}
+              selected={departmentId === row.boardId}
+              // Clicking the department already showing goes back to all of
+              // them, so the strip is a toggle rather than a one-way trip.
+              onSelect={() =>
+                setDepartmentId((current) => (current === row.boardId ? 'any' : row.boardId))
+              }
+            />
+          ))}
+        </section>
+      ) : null}
 
       <section className="stack" style={{ gap: 'var(--space-3)' }}>
           <div className="toolbar">
