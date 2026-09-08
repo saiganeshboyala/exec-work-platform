@@ -19,6 +19,7 @@ import { collabApi } from '../api/collab.api';
 
 import { AssigneePicker } from './AssigneePicker';
 import { DepartmentRow } from './DepartmentRow';
+import { DescriptionField } from './DescriptionField';
 import { MeetingRow } from './MeetingRow';
 import { SelectCell } from './SelectCell';
 import { TitleCell } from './TitleCell';
@@ -290,22 +291,14 @@ export function ItemDrawer({
                 </div>
               ) : null}
 
-              <div className="field">
-                <label className="field__label" htmlFor="drawer-description">Description</label>
-                <textarea
-                  id="drawer-description"
-                  className="field__input"
-                  style={{ height: 130, padding: 'var(--space-2) var(--space-3)', lineHeight: 1.5 }}
-                  defaultValue={item.description ?? ''}
-                  disabled={!canEdit}
-                  placeholder="Context, links, acceptance criteria…"
-                  onBlur={(event) => {
-                    if (event.target.value !== (item.description ?? '')) {
-                      onPatch({ description: event.target.value });
-                    }
-                  }}
-                />
-              </div>
+              <DescriptionField
+                // Remounts when a different task is opened, so the editor never
+                // carries one task's draft into another's.
+                key={item.id}
+                value={item.description ?? ''}
+                disabled={!canEdit}
+                onSave={(description) => onPatch({ description })}
+              />
 
               {subitems.length > 0 ? (
                 <div>
